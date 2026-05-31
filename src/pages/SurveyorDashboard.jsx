@@ -10,7 +10,7 @@ const TABS = [
   { id: 'overview', label: '📊 Overview' },
   { id: 'qualifications', label: '📄 My Qualifications' },
   { id: 'requests', label: '📋 Available Requests' },
-  { id: 'my-interests', label: '⭐ My Interests' },
+  { id: 'my-interests', label: '⭐ My Quotes' },
   { id: 'profile', label: '⚙️ Edit Profile' },
 ]
 
@@ -101,7 +101,7 @@ function OverviewTab({ user, matching, myInterests, onView, onSeeAll }) {
         </div>
         <div className="stat-card">
           <div className="stat-value">{myInterests.length}</div>
-          <div className="stat-label">My Interests</div>
+          <div className="stat-label">My Quotes</div>
         </div>
         <div className="stat-card">
           <div className="stat-value">{(user.documents || []).length}</div>
@@ -207,13 +207,13 @@ function MyInterestsTab({ myInterests, onView }) {
   return (
     <div className="card">
       <div className="card-header">
-        <span className="card-title">Requests I'm Interested In</span>
+        <span className="card-title">My Quotes</span>
       </div>
       {myInterests.length === 0 ? (
         <div className="empty-state">
           <div className="empty-icon">⭐</div>
-          <h3>No interests yet</h3>
-          <p>Browse available requests and express your interest to get started.</p>
+          <h3>No quotes yet</h3>
+          <p>Browse available requests and submit your first quote.</p>
         </div>
       ) : (
         myInterests.map(r => <RequestCard key={r.id} request={r} onView={onView} />)

@@ -84,7 +84,9 @@ function buildUsersList(profiles, surveyors, councils, landlords, documentsBySur
   })
 }
 
-function mapRequest(r, interestsByRequest) {
+function mapRequest(r, quotesByRequest, currentUserId) {
+  const quotes = quotesByRequest[r.id] || []
+  const myQuote = currentUserId ? quotes.find(q => q.surveyor_id === currentUserId) : null
   return {
     id: r.id,
     councilId: r.council_id,
@@ -98,7 +100,11 @@ function mapRequest(r, interestsByRequest) {
     contact: r.contact,
     status: r.status,
     createdAt: r.created_at,
-    interests: interestsByRequest[r.id] || [],
+    awardedQuoteId: r.awarded_quote_id,
+    quotes,
+    myQuote,
+    // Kept for backwards-compat with a few call sites; treat as quote count
+    interests: quotes.map(q => q.surveyor_id),
   }
 }
 
@@ -131,7 +137,7 @@ export function AppProvider({ children }) {
       { data: landlords },
       { data: documents },
       { data: rawRequests },
-      { data: interests },
+      { data: quotes },
     ] = await Promise.all([
       supabase.from('profiles').select('*').eq('id', userId).single(),
       supabase.from('profiles').select('*'),
@@ -140,7 +146,7 @@ export function AppProvider({ children }) {
       supabase.from('landlords').select('*'),
       supabase.from('credential_documents').select('*').order('created_at', { ascending: false }),
       supabase.from('survey_requests').select('*').order('created_at', { ascending: false }),
-      supabase.from('request_interests').select('*'),
+      supabase.from('quotes').select('*').order('created_at', { ascending: true }),
     ])
 
     if (!mountedRef.current) return
@@ -161,15 +167,15 @@ export function AppProvider({ children }) {
     const me = flattenProfile(myProfile, mySurveyor, myCouncil, myLandlord)
     if (me) me.documents = docsBySurv[me.id] || []
 
-    const interestsByReq = {}
-    ;(interests || []).forEach(i => {
-      const arr = interestsByReq[i.request_id] = interestsByReq[i.request_id] || []
-      arr.push(i.surveyor_id)
+    const quotesByReq = {}
+    ;(quotes || []).forEach(q => {
+      const arr = quotesByReq[q.request_id] = quotesByReq[q.request_id] || []
+      arr.push(q)
     })
 
     setCurrentUser(me)
     setUsers(buildUsersList(profiles || [], surveyors || [], councils || [], landlords || [], docsBySurv))
-    setRequests((rawRequests || []).map(r => mapRequest(r, interestsByReq)))
+    setRequests((rawRequests || []).map(r => mapRequest(r, quotesByReq, userId)))
   }, [])
 
   // ── Wire up auth session ──
@@ -326,23 +332,52 @@ export function AppProvider({ children }) {
     await loadAll(currentUser?.id)
   }, [currentUser, loadAll, showToast])
 
-  const toggleInterest = useCallback(async (reqId) => {
+  const submitQuote = useCallback(async (reqId, { price, days, scopeNotes }) => {
     if (!currentUser) return
-    const req = requests.find(r => r.id === reqId)
-    const interested = req?.interests.includes(currentUser.id)
-    if (interested) {
-      const { error } = await supabase.from('request_interests')
-        .delete().eq('request_id', reqId).eq('surveyor_id', currentUser.id)
-      if (error) { showToast(error.message, 'error'); return }
-      showToast('Interest withdrawn')
-    } else {
-      const { error } = await supabase.from('request_interests')
-        .insert({ request_id: reqId, surveyor_id: currentUser.id })
-      if (error) { showToast(error.message, 'error'); return }
-      showToast('Interest expressed! The council will be notified.', 'success')
-    }
+    const { error } = await supabase.from('quotes').insert({
+      request_id: reqId,
+      surveyor_id: currentUser.id,
+      price: price ? Number(price) : null,
+      days_to_complete: days ? Number(days) : null,
+      scope_notes: scopeNotes || '',
+    })
+    if (error) { showToast(error.message, 'error'); return false }
+    showToast('Quote submitted', 'success')
     await loadAll(currentUser.id)
-  }, [currentUser, requests, loadAll, showToast])
+    return true
+  }, [currentUser, loadAll, showToast])
+
+  const withdrawQuote = useCallback(async (quoteId) => {
+    const { error } = await supabase.from('quotes').delete().eq('id', quoteId)
+    if (error) { showToast(error.message, 'error'); return }
+    showToast('Quote withdrawn')
+    await loadAll(currentUser?.id)
+  }, [currentUser, loadAll, showToast])
+
+  const awardQuote = useCallback(async (quote) => {
+    // Mark winning quote
+    const { error: e1 } = await supabase.from('quotes').update({ status: 'won' }).eq('id', quote.id)
+    if (e1) { showToast(e1.message, 'error'); return }
+    // Mark sibling quotes as lost
+    const { error: e2 } = await supabase
+      .from('quotes').update({ status: 'lost' })
+      .eq('request_id', quote.request_id).neq('id', quote.id)
+    if (e2) { showToast(e2.message, 'error'); return }
+    // Update the request
+    const { error: e3 } = await supabase.from('survey_requests')
+      .update({ status: 'awarded', awarded_quote_id: quote.id })
+      .eq('id', quote.request_id)
+    if (e3) { showToast(e3.message, 'error'); return }
+    showToast('Quote awarded — surveyor will be notified', 'success')
+    await loadAll(currentUser?.id)
+  }, [currentUser, loadAll, showToast])
+
+  const updateRequestStatus = useCallback(async (reqId, status) => {
+    const { error } = await supabase.from('survey_requests').update({ status }).eq('id', reqId)
+    if (error) { showToast(error.message, 'error'); return }
+    showToast(`Request marked ${status.replace('_', ' ')}`, 'success')
+    await loadAll(currentUser?.id)
+  }, [currentUser, loadAll, showToast])
 
   // ── Admin ──
   const setSurveyorStatus = useCallback(async (profileId, status) => {
@@ -362,12 +397,14 @@ export function AppProvider({ children }) {
   const value = useMemo(() => ({
     session, currentUser, users, requests, toasts, ready,
     register, login, demoLogin, logout,
-    updateCurrentUser, addDocument, createRequest, closeRequest, toggleInterest,
+    updateCurrentUser, addDocument, createRequest, closeRequest,
+    submitQuote, withdrawQuote, awardQuote, updateRequestStatus,
     setSurveyorStatus, setDocumentStatus,
     showToast,
   }), [session, currentUser, users, requests, toasts, ready,
        register, login, demoLogin, logout,
-       updateCurrentUser, addDocument, createRequest, closeRequest, toggleInterest,
+       updateCurrentUser, addDocument, createRequest, closeRequest,
+       submitQuote, withdrawQuote, awardQuote, updateRequestStatus,
        setSurveyorStatus, setDocumentStatus, showToast])
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>
