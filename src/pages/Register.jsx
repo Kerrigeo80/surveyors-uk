@@ -21,15 +21,15 @@ export default function Register() {
     setQuals(qs => qs.includes(id) ? qs.filter(q => q !== id) : [...qs, id])
   }
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
     const data = { role, name, email, password }
     if (role === 'surveyor') {
-      Object.assign(data, { rics, region, qualifications: quals, documents: [], bio: '', phone: '' })
+      Object.assign(data, { rics, region, qualifications: quals })
     } else {
-      Object.assign(data, { councilName, region, department, phone: '', about: '' })
+      Object.assign(data, { councilName, region, department })
     }
-    const ok = register(data)
+    const ok = await register(data)
     if (ok) navigate(role === 'surveyor' ? '/surveyor' : '/council')
   }
 

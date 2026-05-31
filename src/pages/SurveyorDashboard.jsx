@@ -56,6 +56,18 @@ export default function SurveyorDashboard() {
         </div>
 
         <div className="main-content">
+          {currentUser.status === 'pending' && (
+            <div className="card" style={{ background: '#fefcbf', borderLeft: '4px solid #d69e2e' }}>
+              <strong>⏳ Verification pending.</strong> Your account is awaiting admin review.
+              You can browse and update your profile, but expressing interest is disabled
+              until your qualifications are verified.
+            </div>
+          )}
+          {currentUser.status === 'rejected' && (
+            <div className="card" style={{ background: 'var(--danger-bg)', borderLeft: '4px solid var(--danger)' }}>
+              <strong>Account rejected.</strong> Contact support if you think this is an error.
+            </div>
+          )}
           {tab === 'overview' && (
             <OverviewTab
               user={currentUser}

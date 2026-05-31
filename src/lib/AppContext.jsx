@@ -1,13 +1,94 @@
-import { createContext, useContext, useState, useCallback, useMemo } from 'react'
-import { INITIAL_USERS, INITIAL_REQUESTS } from './data.js'
+import { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { supabase } from './supabase.js'
 
 const AppContext = createContext(null)
 
+// Merge profile + role-specific row into the flat `currentUser` shape pages expect
+function flattenProfile(profile, surveyor, council) {
+  if (!profile) return null
+  const base = {
+    id: profile.id,
+    email: profile.email,
+    role: profile.role,
+    name: profile.name,
+    status: profile.status,
+  }
+  if (profile.role === 'surveyor' && surveyor) {
+    return {
+      ...base,
+      rics: surveyor.rics || '',
+      region: surveyor.region || '',
+      phone: surveyor.phone || '',
+      bio: surveyor.bio || '',
+      qualifications: surveyor.qualifications || [],
+    }
+  }
+  if (profile.role === 'council' && council) {
+    return {
+      ...base,
+      councilName: council.council_name || '',
+      department: council.department || '',
+      region: council.region || '',
+      phone: council.phone || '',
+      about: council.about || '',
+    }
+  }
+  return base
+}
+
+// Build the public `users` list pages expect (other surveyors visible to councils, etc.)
+function buildUsersList(profiles, surveyors, councils, documentsBySurveyor) {
+  const survById = new Map(surveyors.map(s => [s.profile_id, s]))
+  const counById = new Map(councils.map(c => [c.profile_id, c]))
+  return profiles.map(p => {
+    if (p.role === 'surveyor') {
+      const s = survById.get(p.id)
+      return {
+        id: p.id, role: 'surveyor', name: p.name, email: p.email,
+        rics: s?.rics || '', region: s?.region || '',
+        phone: s?.phone || '', bio: s?.bio || '',
+        qualifications: s?.qualifications || [],
+        documents: documentsBySurveyor[p.id] || [],
+      }
+    }
+    if (p.role === 'council') {
+      const c = counById.get(p.id)
+      return {
+        id: p.id, role: 'council', name: p.name, email: p.email,
+        councilName: c?.council_name || '', department: c?.department || '',
+        region: c?.region || '', phone: c?.phone || '', about: c?.about || '',
+      }
+    }
+    return { id: p.id, role: p.role, name: p.name, email: p.email }
+  })
+}
+
+function mapRequest(r, interestsByRequest) {
+  return {
+    id: r.id,
+    councilId: r.council_id,
+    title: r.title,
+    type: r.type,
+    region: r.region,
+    address: r.address,
+    deadline: r.deadline,
+    budget: r.budget,
+    description: r.description,
+    contact: r.contact,
+    status: r.status,
+    createdAt: r.created_at,
+    interests: interestsByRequest[r.id] || [],
+  }
+}
+
 export function AppProvider({ children }) {
-  const [users, setUsers] = useState(INITIAL_USERS)
-  const [requests, setRequests] = useState(INITIAL_REQUESTS)
+  const [session, setSession] = useState(null)
   const [currentUser, setCurrentUser] = useState(null)
+  const [users, setUsers] = useState([])
+  const [requests, setRequests] = useState([])
   const [toasts, setToasts] = useState([])
+  const [ready, setReady] = useState(false)
+  const mountedRef = useRef(true)
 
   const showToast = useCallback((message, type) => {
     const id = Date.now() + Math.random()
@@ -15,93 +96,237 @@ export function AppProvider({ children }) {
     setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 3500)
   }, [])
 
-  const register = useCallback((data) => {
-    if (users.find(u => u.email === data.email)) {
-      showToast('An account with that email already exists', 'error')
+  // ── Load everything the current session can see ──
+  const loadAll = useCallback(async (userId) => {
+    if (!userId) {
+      setCurrentUser(null); setUsers([]); setRequests([])
+      return
+    }
+    const [
+      { data: profile },
+      { data: profiles },
+      { data: surveyors },
+      { data: councils },
+      { data: documents },
+      { data: rawRequests },
+      { data: interests },
+    ] = await Promise.all([
+      supabase.from('profiles').select('*').eq('id', userId).single(),
+      supabase.from('profiles').select('*'),
+      supabase.from('surveyors').select('*'),
+      supabase.from('councils').select('*'),
+      supabase.from('credential_documents').select('*').order('created_at', { ascending: false }),
+      supabase.from('survey_requests').select('*').order('created_at', { ascending: false }),
+      supabase.from('request_interests').select('*'),
+    ])
+
+    if (!mountedRef.current) return
+
+    const docsBySurv = {}
+    ;(documents || []).forEach(d => {
+      const arr = docsBySurv[d.surveyor_id] = docsBySurv[d.surveyor_id] || []
+      arr.push({
+        id: d.id, type: d.type, title: d.title, date: d.issue_date,
+        fileName: d.file_name, status: d.status,
+      })
+    })
+
+    const myProfile = profile || (profiles || []).find(p => p.id === userId) || null
+    const mySurveyor = (surveyors || []).find(s => s.profile_id === userId) || null
+    const myCouncil = (councils || []).find(c => c.profile_id === userId) || null
+    const me = flattenProfile(myProfile, mySurveyor, myCouncil)
+    if (me) me.documents = docsBySurv[me.id] || []
+
+    const interestsByReq = {}
+    ;(interests || []).forEach(i => {
+      const arr = interestsByReq[i.request_id] = interestsByReq[i.request_id] || []
+      arr.push(i.surveyor_id)
+    })
+
+    setCurrentUser(me)
+    setUsers(buildUsersList(profiles || [], surveyors || [], councils || [], docsBySurv))
+    setRequests((rawRequests || []).map(r => mapRequest(r, interestsByReq)))
+  }, [])
+
+  // ── Wire up auth session ──
+  useEffect(() => {
+    mountedRef.current = true
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session)
+      loadAll(data.session?.user?.id).finally(() => setReady(true))
+    })
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      setSession(newSession)
+      loadAll(newSession?.user?.id)
+    })
+    return () => {
+      mountedRef.current = false
+      sub.subscription.unsubscribe()
+    }
+  }, [loadAll])
+
+  // ── Auth ──
+  const register = useCallback(async (data) => {
+    const metadata = { role: data.role, name: data.name }
+    if (data.role === 'surveyor') {
+      Object.assign(metadata, {
+        rics: data.rics || '',
+        region: data.region || '',
+        qualifications: data.qualifications || [],
+      })
+    } else if (data.role === 'council') {
+      Object.assign(metadata, {
+        council_name: data.councilName || '',
+        department: data.department || '',
+        region: data.region || '',
+      })
+    }
+    const { error } = await supabase.auth.signUp({
+      email: data.email,
+      password: data.password,
+      options: { data: metadata },
+    })
+    if (error) {
+      showToast(error.message, 'error')
       return false
     }
-    const newUser = { id: 'user-' + Date.now(), ...data }
-    setUsers(u => [...u, newUser])
-    setCurrentUser(newUser)
-    showToast('Account created successfully!', 'success')
+    showToast(
+      data.role === 'surveyor'
+        ? 'Account created — pending admin verification before you can express interest.'
+        : 'Account created successfully!',
+      'success'
+    )
     return true
-  }, [users, showToast])
+  }, [showToast])
 
-  const login = useCallback((email, password) => {
-    const user = users.find(u => u.email === email && u.password === password)
-    if (!user) {
+  const login = useCallback(async (email, password) => {
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+    if (error) {
       showToast('Invalid email or password', 'error')
       return null
     }
-    setCurrentUser(user)
-    showToast('Welcome back, ' + user.name + '!', 'success')
-    return user
-  }, [users, showToast])
+    showToast('Welcome back!', 'success')
+    // role will land via the auth-state listener -> loadAll
+    return data.user
+  }, [showToast])
 
-  const demoLogin = useCallback((role) => {
-    const user = role === 'surveyor' ? users[0] : users[3]
-    setCurrentUser(user)
-    showToast('Signed in as ' + user.name, 'success')
-    return user
-  }, [users, showToast])
+  const demoLogin = useCallback(async (role) => {
+    const email = role === 'surveyor' ? 'james@walkersurveys.co.uk' : 'emily@brighton.gov.uk'
+    return await login(email, 'demo1234')
+  }, [login])
 
-  const logout = useCallback(() => {
-    setCurrentUser(null)
+  const logout = useCallback(async () => {
+    await supabase.auth.signOut()
     showToast('Signed out')
   }, [showToast])
 
-  const updateCurrentUser = useCallback((patch) => {
-    setCurrentUser(u => {
-      if (!u) return u
-      const updated = { ...u, ...patch }
-      setUsers(list => list.map(x => x.id === u.id ? updated : x))
-      return updated
-    })
-  }, [])
-
-  const addDocument = useCallback((doc) => {
-    setCurrentUser(u => {
-      if (!u) return u
-      const docs = [...(u.documents || []), doc]
-      const updated = { ...u, documents: docs }
-      setUsers(list => list.map(x => x.id === u.id ? updated : x))
-      return updated
-    })
-  }, [])
-
-  const createRequest = useCallback((req) => {
-    setRequests(r => [...r, req])
-    showToast('Survey request published!', 'success')
-  }, [showToast])
-
-  const closeRequest = useCallback((reqId) => {
-    setRequests(r => r.map(x => x.id === reqId ? { ...x, status: 'closed' } : x))
-    showToast('Request closed')
-  }, [showToast])
-
-  const toggleInterest = useCallback((reqId) => {
+  // ── Mutations ──
+  const updateCurrentUser = useCallback(async (patch) => {
     if (!currentUser) return
-    setRequests(r => r.map(x => {
-      if (x.id !== reqId) return x
-      const has = x.interests.includes(currentUser.id)
-      return {
-        ...x,
-        interests: has ? x.interests.filter(i => i !== currentUser.id) : [...x.interests, currentUser.id],
+    const profilePatch = {}
+    if (patch.name !== undefined) profilePatch.name = patch.name
+    if (Object.keys(profilePatch).length) {
+      await supabase.from('profiles').update(profilePatch).eq('id', currentUser.id)
+    }
+
+    if (currentUser.role === 'surveyor') {
+      const survPatch = {}
+      if (patch.rics !== undefined) survPatch.rics = patch.rics
+      if (patch.region !== undefined) survPatch.region = patch.region
+      if (patch.phone !== undefined) survPatch.phone = patch.phone
+      if (patch.bio !== undefined) survPatch.bio = patch.bio
+      if (patch.qualifications !== undefined) survPatch.qualifications = patch.qualifications
+      if (Object.keys(survPatch).length) {
+        await supabase.from('surveyors').update(survPatch).eq('profile_id', currentUser.id)
       }
-    }))
-    const wasInterested = requests.find(r => r.id === reqId)?.interests.includes(currentUser.id)
-    showToast(
-      wasInterested ? 'Interest withdrawn' : 'Interest expressed! The council will be notified.',
-      wasInterested ? undefined : 'success'
-    )
-  }, [currentUser, requests, showToast])
+    } else if (currentUser.role === 'council') {
+      const counPatch = {}
+      if (patch.councilName !== undefined) counPatch.council_name = patch.councilName
+      if (patch.department !== undefined) counPatch.department = patch.department
+      if (patch.region !== undefined) counPatch.region = patch.region
+      if (patch.phone !== undefined) counPatch.phone = patch.phone
+      if (patch.about !== undefined) counPatch.about = patch.about
+      if (Object.keys(counPatch).length) {
+        await supabase.from('councils').update(counPatch).eq('profile_id', currentUser.id)
+      }
+    }
+    await loadAll(currentUser.id)
+  }, [currentUser, loadAll])
+
+  const addDocument = useCallback(async (doc) => {
+    if (!currentUser) return
+    const { error } = await supabase.from('credential_documents').insert({
+      surveyor_id: currentUser.id,
+      type: doc.type, title: doc.title, issue_date: doc.date,
+      file_name: doc.fileName, status: 'pending',
+    })
+    if (error) { showToast(error.message, 'error'); return }
+    await loadAll(currentUser.id)
+  }, [currentUser, loadAll, showToast])
+
+  const createRequest = useCallback(async (req) => {
+    if (!currentUser) return
+    const { error } = await supabase.from('survey_requests').insert({
+      council_id: currentUser.id,
+      title: req.title, type: req.type, region: req.region,
+      address: req.address, deadline: req.deadline, budget: req.budget || null,
+      description: req.description, contact: req.contact, status: 'open',
+    })
+    if (error) { showToast(error.message, 'error'); return }
+    showToast('Survey request published!', 'success')
+    await loadAll(currentUser.id)
+  }, [currentUser, loadAll, showToast])
+
+  const closeRequest = useCallback(async (reqId) => {
+    const { error } = await supabase.from('survey_requests').update({ status: 'closed' }).eq('id', reqId)
+    if (error) { showToast(error.message, 'error'); return }
+    showToast('Request closed')
+    await loadAll(currentUser?.id)
+  }, [currentUser, loadAll, showToast])
+
+  const toggleInterest = useCallback(async (reqId) => {
+    if (!currentUser) return
+    const req = requests.find(r => r.id === reqId)
+    const interested = req?.interests.includes(currentUser.id)
+    if (interested) {
+      const { error } = await supabase.from('request_interests')
+        .delete().eq('request_id', reqId).eq('surveyor_id', currentUser.id)
+      if (error) { showToast(error.message, 'error'); return }
+      showToast('Interest withdrawn')
+    } else {
+      const { error } = await supabase.from('request_interests')
+        .insert({ request_id: reqId, surveyor_id: currentUser.id })
+      if (error) { showToast(error.message, 'error'); return }
+      showToast('Interest expressed! The council will be notified.', 'success')
+    }
+    await loadAll(currentUser.id)
+  }, [currentUser, requests, loadAll, showToast])
+
+  // ── Admin ──
+  const setSurveyorStatus = useCallback(async (profileId, status) => {
+    const { error } = await supabase.from('profiles').update({ status }).eq('id', profileId)
+    if (error) { showToast(error.message, 'error'); return }
+    showToast(`Surveyor ${status === 'active' ? 'approved' : status === 'rejected' ? 'rejected' : 'updated'}`, 'success')
+    await loadAll(currentUser?.id)
+  }, [currentUser, loadAll, showToast])
+
+  const setDocumentStatus = useCallback(async (docId, status) => {
+    const { error } = await supabase.from('credential_documents').update({ status }).eq('id', docId)
+    if (error) { showToast(error.message, 'error'); return }
+    showToast(`Document ${status}`, 'success')
+    await loadAll(currentUser?.id)
+  }, [currentUser, loadAll, showToast])
 
   const value = useMemo(() => ({
-    users, requests, currentUser, toasts,
-    register, login, demoLogin, logout, updateCurrentUser,
-    addDocument, createRequest, closeRequest, toggleInterest,
+    session, currentUser, users, requests, toasts, ready,
+    register, login, demoLogin, logout,
+    updateCurrentUser, addDocument, createRequest, closeRequest, toggleInterest,
+    setSurveyorStatus, setDocumentStatus,
     showToast,
-  }), [users, requests, currentUser, toasts, register, login, demoLogin, logout, updateCurrentUser, addDocument, createRequest, closeRequest, toggleInterest, showToast])
+  }), [session, currentUser, users, requests, toasts, ready,
+       register, login, demoLogin, logout,
+       updateCurrentUser, addDocument, createRequest, closeRequest, toggleInterest,
+       setSurveyorStatus, setDocumentStatus, showToast])
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>
 }

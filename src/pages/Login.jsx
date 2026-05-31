@@ -8,17 +8,16 @@ export default function Login() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
 
-  const goDash = (user) => navigate(user.role === 'surveyor' ? '/surveyor' : '/council')
-
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
-    const user = login(email, password)
-    if (user) goDash(user)
+    const user = await login(email, password)
+    // Navigation handled by App.jsx watching session state — but push a default
+    if (user) navigate('/')
   }
 
-  const handleDemo = (role) => {
-    const user = demoLogin(role)
-    if (user) goDash(user)
+  const handleDemo = async (role) => {
+    const user = await demoLogin(role)
+    if (user) navigate('/')
   }
 
   return (
