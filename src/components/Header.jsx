@@ -15,7 +15,7 @@ export default function Header() {
         {currentUser ? (
           <>
             <div className="user-badge">
-              {currentUser.role === 'council' ? '🏛' : '📋'} {currentUser.name}
+              {currentUser.role === 'council' ? '🏛' : currentUser.role === 'landlord' ? '🏠' : currentUser.role === 'admin' ? '⭐' : '📋'} {currentUser.name}
             </div>
             <button
               className="btn btn-sm"

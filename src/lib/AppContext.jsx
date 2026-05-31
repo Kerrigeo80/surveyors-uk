@@ -4,7 +4,7 @@ import { supabase } from './supabase.js'
 const AppContext = createContext(null)
 
 // Merge profile + role-specific row into the flat `currentUser` shape pages expect
-function flattenProfile(profile, surveyor, council) {
+function flattenProfile(profile, surveyor, council, landlord) {
   if (!profile) return null
   const base = {
     id: profile.id,
@@ -33,13 +33,25 @@ function flattenProfile(profile, surveyor, council) {
       about: council.about || '',
     }
   }
+  if (profile.role === 'landlord' && landlord) {
+    return {
+      ...base,
+      businessName: landlord.business_name || '',
+      landlordType: landlord.landlord_type || 'individual',
+      region: landlord.region || '',
+      address: landlord.address || '',
+      phone: landlord.phone || '',
+      about: landlord.about || '',
+    }
+  }
   return base
 }
 
 // Build the public `users` list pages expect (other surveyors visible to councils, etc.)
-function buildUsersList(profiles, surveyors, councils, documentsBySurveyor) {
+function buildUsersList(profiles, surveyors, councils, landlords, documentsBySurveyor) {
   const survById = new Map(surveyors.map(s => [s.profile_id, s]))
   const counById = new Map(councils.map(c => [c.profile_id, c]))
+  const landById = new Map(landlords.map(l => [l.profile_id, l]))
   return profiles.map(p => {
     if (p.role === 'surveyor') {
       const s = survById.get(p.id)
@@ -57,6 +69,15 @@ function buildUsersList(profiles, surveyors, councils, documentsBySurveyor) {
         id: p.id, role: 'council', name: p.name, email: p.email,
         councilName: c?.council_name || '', department: c?.department || '',
         region: c?.region || '', phone: c?.phone || '', about: c?.about || '',
+      }
+    }
+    if (p.role === 'landlord') {
+      const l = landById.get(p.id)
+      return {
+        id: p.id, role: 'landlord', name: p.name, email: p.email,
+        businessName: l?.business_name || '', landlordType: l?.landlord_type || '',
+        region: l?.region || '', address: l?.address || '',
+        phone: l?.phone || '', about: l?.about || '',
       }
     }
     return { id: p.id, role: p.role, name: p.name, email: p.email }
@@ -107,6 +128,7 @@ export function AppProvider({ children }) {
       { data: profiles },
       { data: surveyors },
       { data: councils },
+      { data: landlords },
       { data: documents },
       { data: rawRequests },
       { data: interests },
@@ -115,6 +137,7 @@ export function AppProvider({ children }) {
       supabase.from('profiles').select('*'),
       supabase.from('surveyors').select('*'),
       supabase.from('councils').select('*'),
+      supabase.from('landlords').select('*'),
       supabase.from('credential_documents').select('*').order('created_at', { ascending: false }),
       supabase.from('survey_requests').select('*').order('created_at', { ascending: false }),
       supabase.from('request_interests').select('*'),
@@ -134,7 +157,8 @@ export function AppProvider({ children }) {
     const myProfile = profile || (profiles || []).find(p => p.id === userId) || null
     const mySurveyor = (surveyors || []).find(s => s.profile_id === userId) || null
     const myCouncil = (councils || []).find(c => c.profile_id === userId) || null
-    const me = flattenProfile(myProfile, mySurveyor, myCouncil)
+    const myLandlord = (landlords || []).find(l => l.profile_id === userId) || null
+    const me = flattenProfile(myProfile, mySurveyor, myCouncil, myLandlord)
     if (me) me.documents = docsBySurv[me.id] || []
 
     const interestsByReq = {}
@@ -144,7 +168,7 @@ export function AppProvider({ children }) {
     })
 
     setCurrentUser(me)
-    setUsers(buildUsersList(profiles || [], surveyors || [], councils || [], docsBySurv))
+    setUsers(buildUsersList(profiles || [], surveyors || [], councils || [], landlords || [], docsBySurv))
     setRequests((rawRequests || []).map(r => mapRequest(r, interestsByReq)))
   }, [])
 
@@ -179,6 +203,13 @@ export function AppProvider({ children }) {
         council_name: data.councilName || '',
         department: data.department || '',
         region: data.region || '',
+      })
+    } else if (data.role === 'landlord') {
+      Object.assign(metadata, {
+        business_name: data.businessName || '',
+        landlord_type: data.landlordType || 'individual',
+        region: data.region || '',
+        address: data.address || '',
       })
     }
     const { error } = await supabase.auth.signUp({
@@ -248,6 +279,17 @@ export function AppProvider({ children }) {
       if (patch.about !== undefined) counPatch.about = patch.about
       if (Object.keys(counPatch).length) {
         await supabase.from('councils').update(counPatch).eq('profile_id', currentUser.id)
+      }
+    } else if (currentUser.role === 'landlord') {
+      const landPatch = {}
+      if (patch.businessName !== undefined) landPatch.business_name = patch.businessName
+      if (patch.landlordType !== undefined) landPatch.landlord_type = patch.landlordType
+      if (patch.region !== undefined) landPatch.region = patch.region
+      if (patch.address !== undefined) landPatch.address = patch.address
+      if (patch.phone !== undefined) landPatch.phone = patch.phone
+      if (patch.about !== undefined) landPatch.about = patch.about
+      if (Object.keys(landPatch).length) {
+        await supabase.from('landlords').update(landPatch).eq('profile_id', currentUser.id)
       }
     }
     await loadAll(currentUser.id)

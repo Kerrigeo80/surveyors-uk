@@ -4,6 +4,12 @@ export const UK_REGIONS = [
   'Scotland', 'Wales', 'Northern Ireland',
 ]
 
+export const LANDLORD_TYPES = [
+  { id: 'individual', label: 'Individual landlord' },
+  { id: 'company', label: 'Property company' },
+  { id: 'housing_association', label: 'Housing association' },
+]
+
 export const QUALIFICATION_TYPES = [
   { id: 'building', label: 'Building Surveying', desc: 'RICS Building Surveyor' },
   { id: 'quantity', label: 'Quantity Surveying', desc: 'Quantity Surveyor / Cost Consultant' },

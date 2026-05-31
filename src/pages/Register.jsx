@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useApp } from '../lib/AppContext.jsx'
-import { UK_REGIONS, QUALIFICATION_TYPES } from '../lib/data.js'
+import { UK_REGIONS, QUALIFICATION_TYPES, LANDLORD_TYPES } from '../lib/data.js'
 
 export default function Register() {
   const navigate = useNavigate()
@@ -16,6 +16,9 @@ export default function Register() {
   const [quals, setQuals] = useState([])
   const [councilName, setCouncilName] = useState('')
   const [department, setDepartment] = useState('')
+  const [businessName, setBusinessName] = useState('')
+  const [landlordType, setLandlordType] = useState('individual')
+  const [address, setAddress] = useState('')
 
   const toggleQual = (id) => {
     setQuals(qs => qs.includes(id) ? qs.filter(q => q !== id) : [...qs, id])
@@ -26,11 +29,16 @@ export default function Register() {
     const data = { role, name, email, password }
     if (role === 'surveyor') {
       Object.assign(data, { rics, region, qualifications: quals })
-    } else {
+    } else if (role === 'council') {
       Object.assign(data, { councilName, region, department })
+    } else if (role === 'landlord') {
+      Object.assign(data, { businessName, landlordType, region, address })
     }
     const ok = await register(data)
-    if (ok) navigate(role === 'surveyor' ? '/surveyor' : '/council')
+    if (ok) {
+      const dash = role === 'surveyor' ? '/surveyor' : role === 'council' ? '/council' : '/landlord'
+      navigate(dash)
+    }
   }
 
   return (
@@ -39,16 +47,21 @@ export default function Register() {
         <h2>Create Account</h2>
         <p className="subtitle">Join the Surveyors UK platform</p>
 
-        <div className="role-selector">
+        <div className="role-selector" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
           <div className={'role-option' + (role === 'surveyor' ? ' selected' : '')} onClick={() => setRole('surveyor')}>
             <div className="role-icon">📋</div>
             <div className="role-label">Surveyor</div>
-            <div className="role-desc">Register & upload qualifications</div>
+            <div className="role-desc">Upload qualifications & quote on work</div>
           </div>
           <div className={'role-option' + (role === 'council' ? ' selected' : '')} onClick={() => setRole('council')}>
             <div className="role-icon">🏛</div>
-            <div className="role-label">Local Council</div>
+            <div className="role-label">Council</div>
             <div className="role-desc">Post survey requests</div>
+          </div>
+          <div className={'role-option' + (role === 'landlord' ? ' selected' : '')} onClick={() => setRole('landlord')}>
+            <div className="role-icon">🏠</div>
+            <div className="role-label">Landlord</div>
+            <div className="role-desc">Individual to housing association</div>
           </div>
         </div>
 
@@ -111,6 +124,32 @@ export default function Register() {
               <div className="form-group">
                 <label>Department</label>
                 <input type="text" value={department} onChange={e => setDepartment(e.target.value)} placeholder="e.g. Planning & Development" />
+              </div>
+            </>
+          )}
+
+          {role === 'landlord' && (
+            <>
+              <div className="form-group">
+                <label>Landlord type</label>
+                <select value={landlordType} onChange={e => setLandlordType(e.target.value)} required>
+                  {LANDLORD_TYPES.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+                </select>
+              </div>
+              <div className="form-group">
+                <label>Business / trading name (optional)</label>
+                <input type="text" value={businessName} onChange={e => setBusinessName(e.target.value)} placeholder="e.g. Riverside Properties Ltd" />
+              </div>
+              <div className="form-group">
+                <label>Region</label>
+                <select value={region} onChange={e => setRegion(e.target.value)} required>
+                  <option value="">Select region...</option>
+                  {UK_REGIONS.map(r => <option key={r} value={r}>{r}</option>)}
+                </select>
+              </div>
+              <div className="form-group">
+                <label>Primary address</label>
+                <input type="text" value={address} onChange={e => setAddress(e.target.value)} placeholder="Main property or office address" />
               </div>
             </>
           )}

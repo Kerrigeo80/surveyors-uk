@@ -7,6 +7,7 @@ import Register from './pages/Register.jsx'
 import Login from './pages/Login.jsx'
 import SurveyorDashboard from './pages/SurveyorDashboard.jsx'
 import CouncilDashboard from './pages/CouncilDashboard.jsx'
+import LandlordDashboard from './pages/LandlordDashboard.jsx'
 import AdminDashboard from './pages/AdminDashboard.jsx'
 
 function dashFor(user) {
@@ -14,6 +15,7 @@ function dashFor(user) {
   if (user.role === 'admin') return '/admin'
   if (user.role === 'surveyor') return '/surveyor'
   if (user.role === 'council') return '/council'
+  if (user.role === 'landlord') return '/landlord'
   return '/'
 }
 
@@ -43,6 +45,7 @@ export default function App() {
           <Route path="/login" element={<PublicOnly><Login /></PublicOnly>} />
           <Route path="/surveyor" element={<SurveyorDashboard />} />
           <Route path="/council" element={<CouncilDashboard />} />
+          <Route path="/landlord" element={<LandlordDashboard />} />
           <Route path="/admin" element={<AdminDashboard />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

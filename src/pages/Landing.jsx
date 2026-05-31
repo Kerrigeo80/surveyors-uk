@@ -20,6 +20,13 @@ export default function Landing() {
           >
             Register as Council
           </button>
+          <button
+            className="btn btn-lg"
+            style={{ background: 'rgba(255,255,255,0.2)', color: 'white' }}
+            onClick={() => startRegister('landlord')}
+          >
+            Register as Landlord
+          </button>
         </div>
       </div>
 
