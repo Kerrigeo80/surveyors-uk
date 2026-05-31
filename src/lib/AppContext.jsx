@@ -113,6 +113,8 @@ export function AppProvider({ children }) {
   const [currentUser, setCurrentUser] = useState(null)
   const [users, setUsers] = useState([])
   const [requests, setRequests] = useState([])
+  const [properties, setProperties] = useState([])
+  const [notifications, setNotifications] = useState([])
   const [toasts, setToasts] = useState([])
   const [ready, setReady] = useState(false)
   const mountedRef = useRef(true)
@@ -148,6 +150,10 @@ export function AppProvider({ children }) {
       supabase.from('survey_requests').select('*').order('created_at', { ascending: false }),
       supabase.from('quotes').select('*').order('created_at', { ascending: true }),
     ])
+    const [{ data: propertiesData }, { data: notificationsData }] = await Promise.all([
+      supabase.from('properties').select('*').order('created_at', { ascending: false }),
+      supabase.from('notifications').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(50),
+    ])
 
     if (!mountedRef.current) return
 
@@ -156,7 +162,7 @@ export function AppProvider({ children }) {
       const arr = docsBySurv[d.surveyor_id] = docsBySurv[d.surveyor_id] || []
       arr.push({
         id: d.id, type: d.type, title: d.title, date: d.issue_date,
-        fileName: d.file_name, status: d.status,
+        fileName: d.file_name, filePath: d.file_path, status: d.status,
       })
     })
 
@@ -176,6 +182,8 @@ export function AppProvider({ children }) {
     setCurrentUser(me)
     setUsers(buildUsersList(profiles || [], surveyors || [], councils || [], landlords || [], docsBySurv))
     setRequests((rawRequests || []).map(r => mapRequest(r, quotesByReq, userId)))
+    setProperties(propertiesData || [])
+    setNotifications(notificationsData || [])
   }, [])
 
   // ── Wire up auth session ──
@@ -319,11 +327,50 @@ export function AppProvider({ children }) {
       title: req.title, type: req.type, region: req.region,
       address: req.address, deadline: req.deadline, budget: req.budget || null,
       description: req.description, contact: req.contact, status: 'open',
+      property_id: req.propertyId || null,
     })
     if (error) { showToast(error.message, 'error'); return }
     showToast('Survey request published!', 'success')
     await loadAll(currentUser.id)
   }, [currentUser, loadAll, showToast])
+
+  const createProperty = useCallback(async (p) => {
+    if (!currentUser) return
+    const { error } = await supabase.from('properties').insert({
+      landlord_id: currentUser.id,
+      address: p.address, postcode: p.postcode || null, region: p.region || null,
+      type: p.type || 'residential', units: p.units ? Number(p.units) : null,
+      notes: p.notes || '',
+    })
+    if (error) { showToast(error.message, 'error'); return }
+    showToast('Property added', 'success')
+    await loadAll(currentUser.id)
+  }, [currentUser, loadAll, showToast])
+
+  const deleteProperty = useCallback(async (id) => {
+    const { error } = await supabase.from('properties').delete().eq('id', id)
+    if (error) { showToast(error.message, 'error'); return }
+    showToast('Property removed')
+    await loadAll(currentUser?.id)
+  }, [currentUser, loadAll, showToast])
+
+  const markNotificationRead = useCallback(async (id) => {
+    setNotifications(ns => ns.map(n => n.id === id ? { ...n, read_at: new Date().toISOString() } : n))
+    await supabase.from('notifications').update({ read_at: new Date().toISOString() }).eq('id', id)
+  }, [])
+
+  const markAllNotificationsRead = useCallback(async () => {
+    if (!currentUser) return
+    const now = new Date().toISOString()
+    setNotifications(ns => ns.map(n => n.read_at ? n : { ...n, read_at: now }))
+    await supabase.from('notifications').update({ read_at: now }).eq('user_id', currentUser.id).is('read_at', null)
+  }, [currentUser])
+
+  const refreshNotifications = useCallback(async () => {
+    if (!currentUser) return
+    const { data } = await supabase.from('notifications').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: false }).limit(50)
+    setNotifications(data || [])
+  }, [currentUser])
 
   const closeRequest = useCallback(async (reqId) => {
     const { error } = await supabase.from('survey_requests').update({ status: 'closed' }).eq('id', reqId)
@@ -394,18 +441,26 @@ export function AppProvider({ children }) {
     await loadAll(currentUser?.id)
   }, [currentUser, loadAll, showToast])
 
+  const refresh = useCallback(() => loadAll(currentUser?.id), [currentUser, loadAll])
+
   const value = useMemo(() => ({
-    session, currentUser, users, requests, toasts, ready,
+    session, currentUser, users, requests, properties, notifications, toasts, ready,
     register, login, demoLogin, logout,
     updateCurrentUser, addDocument, createRequest, closeRequest,
+    createProperty, deleteProperty,
     submitQuote, withdrawQuote, awardQuote, updateRequestStatus,
     setSurveyorStatus, setDocumentStatus,
+    markNotificationRead, markAllNotificationsRead, refreshNotifications,
+    refresh,
     showToast,
-  }), [session, currentUser, users, requests, toasts, ready,
+  }), [session, currentUser, users, requests, properties, notifications, toasts, ready,
        register, login, demoLogin, logout,
        updateCurrentUser, addDocument, createRequest, closeRequest,
+       createProperty, deleteProperty,
        submitQuote, withdrawQuote, awardQuote, updateRequestStatus,
-       setSurveyorStatus, setDocumentStatus, showToast])
+       setSurveyorStatus, setDocumentStatus,
+       markNotificationRead, markAllNotificationsRead, refreshNotifications,
+       refresh, showToast])
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>
 }

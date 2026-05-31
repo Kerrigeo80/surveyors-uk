@@ -1,13 +1,14 @@
 import { useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { useApp } from '../lib/AppContext.jsx'
-import { UK_REGIONS, QUALIFICATION_TYPES, LANDLORD_TYPES, getInitials, formatDateGB, qualLabel } from '../lib/data.js'
+import { UK_REGIONS, QUALIFICATION_TYPES, LANDLORD_TYPES, PROPERTY_TYPES, getInitials, formatDateGB, qualLabel } from '../lib/data.js'
 import RequestDetailModal from '../components/RequestDetailModal.jsx'
 
 const TABS = [
   { id: 'overview', label: '📊 Overview' },
   { id: 'my-requests', label: '📋 My Requests' },
   { id: 'create-request', label: '➕ New Request' },
+  { id: 'properties', label: '🏠 My Properties' },
   { id: 'surveyors', label: '🔍 Browse Surveyors' },
   { id: 'profile', label: '⚙️ Edit Profile' },
 ]
@@ -56,6 +57,7 @@ export default function LandlordDashboard() {
           {tab === 'overview' && <OverviewTab myReqs={myReqs} onView={setDetailReq} onCreate={() => setTab('create-request')} />}
           {tab === 'my-requests' && <MyRequestsTab myReqs={myReqs} onView={setDetailReq} onCreate={() => setTab('create-request')} />}
           {tab === 'create-request' && <CreateRequestTab landlord={currentUser} onCreated={() => setTab('my-requests')} />}
+          {tab === 'properties' && <PropertiesTab />}
           {tab === 'surveyors' && <SurveyorsTab />}
           {tab === 'profile' && <ProfileTab />}
         </div>
@@ -155,12 +157,30 @@ function MyRequestsTab({ myReqs, onView, onCreate }) {
 }
 
 function CreateRequestTab({ landlord, onCreated }) {
-  const { createRequest } = useApp()
+  const { createRequest, properties } = useApp()
+  const myProperties = properties.filter(p => p.landlord_id === landlord.id)
   const [form, setForm] = useState({
     title: '', type: '', region: landlord.region || '', address: landlord.address || '',
     deadline: '', budget: '', description: '', contact: landlord.email || '',
+    propertyId: '',
   })
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }))
+
+  const handlePropertyChange = (e) => {
+    const id = e.target.value
+    setForm(f => ({ ...f, propertyId: id }))
+    if (id) {
+      const p = myProperties.find(x => x.id === id)
+      if (p) {
+        setForm(f => ({
+          ...f,
+          propertyId: id,
+          address: p.address,
+          region: p.region || f.region,
+        }))
+      }
+    }
+  }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -172,6 +192,17 @@ function CreateRequestTab({ landlord, onCreated }) {
     <div className="card">
       <h3 style={{ marginBottom: '20px' }}>Create New Survey Request</h3>
       <form onSubmit={handleSubmit}>
+        {myProperties.length > 0 && (
+          <div className="form-group">
+            <label>Select a property (optional)</label>
+            <select value={form.propertyId} onChange={handlePropertyChange}>
+              <option value="">— pick a property or fill the address below —</option>
+              {myProperties.map(p => (
+                <option key={p.id} value={p.id}>{p.address}{p.postcode ? ` · ${p.postcode}` : ''}</option>
+              ))}
+            </select>
+          </div>
+        )}
         <div className="form-group">
           <label>Request Title</label>
           <input type="text" value={form.title} onChange={set('title')} placeholder="e.g. Building Condition Survey — 22 Oak Lane" required />
@@ -216,6 +247,96 @@ function CreateRequestTab({ landlord, onCreated }) {
         </div>
         <button type="submit" className="btn btn-primary">Publish Request</button>
       </form>
+    </div>
+  )
+}
+
+function PropertiesTab() {
+  const { currentUser, properties, createProperty, deleteProperty } = useApp()
+  const myProperties = properties.filter(p => p.landlord_id === currentUser.id)
+  const [showAdd, setShowAdd] = useState(false)
+  const [form, setForm] = useState({ address: '', postcode: '', region: currentUser.region || '', type: 'residential', units: '', notes: '' })
+  const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }))
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    await createProperty(form)
+    setForm({ address: '', postcode: '', region: currentUser.region || '', type: 'residential', units: '', notes: '' })
+    setShowAdd(false)
+  }
+
+  return (
+    <div className="card">
+      <div className="card-header">
+        <span className="card-title">My Properties ({myProperties.length})</span>
+        <button className="btn btn-primary btn-sm" onClick={() => setShowAdd(s => !s)}>
+          {showAdd ? 'Cancel' : '+ Add Property'}
+        </button>
+      </div>
+
+      {showAdd && (
+        <form onSubmit={handleSubmit} style={{ background: 'var(--bg)', padding: '16px', borderRadius: 'var(--radius)', marginBottom: '16px' }}>
+          <div className="form-group">
+            <label>Address</label>
+            <input type="text" value={form.address} onChange={set('address')} placeholder="Full address" required />
+          </div>
+          <div className="form-row">
+            <div className="form-group">
+              <label>Postcode</label>
+              <input type="text" value={form.postcode} onChange={set('postcode')} placeholder="e.g. BN2 1TL" />
+            </div>
+            <div className="form-group">
+              <label>Region</label>
+              <select value={form.region} onChange={set('region')}>
+                <option value="">Select...</option>
+                {UK_REGIONS.map(r => <option key={r} value={r}>{r}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="form-row">
+            <div className="form-group">
+              <label>Property type</label>
+              <select value={form.type} onChange={set('type')}>
+                {PROPERTY_TYPES.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+              </select>
+            </div>
+            <div className="form-group">
+              <label>Units (if multi-unit)</label>
+              <input type="number" min="1" value={form.units} onChange={set('units')} placeholder="e.g. 12" />
+            </div>
+          </div>
+          <div className="form-group">
+            <label>Notes</label>
+            <textarea rows={2} value={form.notes} onChange={set('notes')} placeholder="Access details, special notes" />
+          </div>
+          <button type="submit" className="btn btn-primary">Save Property</button>
+        </form>
+      )}
+
+      {myProperties.length === 0 && !showAdd ? (
+        <div className="empty-state">
+          <div className="empty-icon">🏠</div>
+          <h3>No properties yet</h3>
+          <p>Add the properties you manage to attach them to survey requests.</p>
+        </div>
+      ) : (
+        <ul className="qual-list">
+          {myProperties.map(p => (
+            <li key={p.id} className="qual-item">
+              <div className="qual-info">
+                <span className="qual-file-icon">🏠</span>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: '14px' }}>{p.address}</div>
+                  <div style={{ fontSize: '12px', color: 'var(--text-light)' }}>
+                    {[p.postcode, p.region, PROPERTY_TYPES.find(t => t.id === p.type)?.label, p.units && `${p.units} units`].filter(Boolean).join(' · ')}
+                  </div>
+                </div>
+              </div>
+              <button className="btn btn-outline btn-sm" onClick={() => deleteProperty(p.id)}>Remove</button>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   )
 }

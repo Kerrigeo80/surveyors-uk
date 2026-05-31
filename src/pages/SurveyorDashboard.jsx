@@ -5,6 +5,7 @@ import { UK_REGIONS, QUALIFICATION_TYPES, getInitials, formatDateGB, qualLabel }
 import RequestCard from '../components/RequestCard.jsx'
 import RequestDetailModal from '../components/RequestDetailModal.jsx'
 import UploadQualificationModal from '../components/UploadQualificationModal.jsx'
+import DocumentLink from '../components/DocumentLink.jsx'
 
 const TABS = [
   { id: 'overview', label: '📊 Overview' },
@@ -154,7 +155,10 @@ function QualificationsTab({ user, onUpload }) {
                   </div>
                 </div>
               </div>
-              <span className={`badge badge-${d.status}`}>{d.status}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                {d.filePath && <DocumentLink filePath={d.filePath} label="Open" />}
+                <span className={`badge badge-${d.status}`}>{d.status}</span>
+              </div>
             </li>
           ))}
         </ul>

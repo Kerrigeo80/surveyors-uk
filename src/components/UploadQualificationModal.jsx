@@ -1,32 +1,50 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useApp } from '../lib/AppContext.jsx'
+import { supabase } from '../lib/supabase.js'
 import { QUALIFICATION_TYPES } from '../lib/data.js'
 
 export default function UploadQualificationModal({ onClose }) {
-  const { addDocument, showToast } = useApp()
+  const { currentUser, showToast, refresh } = useApp()
+  const fileInputRef = useRef(null)
   const [type, setType] = useState('')
   const [title, setTitle] = useState('')
   const [date, setDate] = useState('')
-  const [fileName, setFileName] = useState('Click to select a file (PDF, JPG, PNG)')
-  const [hasFile, setHasFile] = useState(false)
+  const [file, setFile] = useState(null)
+  const [uploading, setUploading] = useState(false)
 
-  const handleFile = (e) => {
-    const f = e.target.files[0]
-    if (f) {
-      setFileName(f.name)
-      setHasFile(true)
-    }
-  }
-
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
-    addDocument({
-      id: 'd-' + Date.now(),
-      type, title, date,
-      fileName: hasFile ? fileName : 'document.pdf',
+    if (!file) {
+      showToast('Please select a file', 'error')
+      return
+    }
+    setUploading(true)
+    const safeName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_')
+    const path = `${currentUser.id}/${Date.now()}-${safeName}`
+    const { error: upErr } = await supabase.storage.from('credentials').upload(path, file, {
+      upsert: false,
+      contentType: file.type || 'application/octet-stream',
+    })
+    if (upErr) {
+      setUploading(false)
+      showToast('Upload failed: ' + upErr.message, 'error')
+      return
+    }
+    const { error: insErr } = await supabase.from('credential_documents').insert({
+      surveyor_id: currentUser.id,
+      type, title, issue_date: date,
+      file_name: file.name, file_path: path,
       status: 'pending',
     })
+    setUploading(false)
+    if (insErr) {
+      // Best-effort cleanup
+      await supabase.storage.from('credentials').remove([path])
+      showToast(insErr.message, 'error')
+      return
+    }
     showToast('Document uploaded — pending verification', 'success')
+    await refresh()
     onClose()
   }
 
@@ -53,11 +71,13 @@ export default function UploadQualificationModal({ onClose }) {
           </div>
           <label className="upload-zone" htmlFor="fileInput" style={{ display: 'block' }}>
             <div className="upload-icon">📁</div>
-            <p>{fileName}</p>
-            <input id="fileInput" type="file" accept=".pdf,.jpg,.jpeg,.png" style={{ display: 'none' }} onChange={handleFile} />
+            <p>{file ? file.name : 'Click to select a file (PDF, JPG, PNG)'}</p>
+            <input id="fileInput" ref={fileInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png"
+              style={{ display: 'none' }}
+              onChange={(e) => setFile(e.target.files[0] || null)} />
           </label>
-          <button type="submit" className="btn btn-primary" style={{ width: '100%', justifyContent: 'center' }}>
-            Upload Document
+          <button type="submit" disabled={uploading} className="btn btn-primary" style={{ width: '100%', justifyContent: 'center' }}>
+            {uploading ? 'Uploading…' : 'Upload Document'}
           </button>
         </form>
       </div>

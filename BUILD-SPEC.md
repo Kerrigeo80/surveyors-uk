@@ -125,6 +125,34 @@ Mobile-first browse for surveyors on the road · push notifications · advanced 
 
 ---
 
+## Pricing — two options on the table (decision parked 2026-06-01)
+
+A 3-month free trial for everyone is locked in for launch. After the trial, two pricing models are under consideration.
+
+### Option A — Kerri's original proposal
+- **3-tier subscriptions for all three sides** (surveyor / landlord / council)
+- **10% commission from the council/landlord side** AND **10% commission from the surveyor side** on awarded work
+- Effective platform take per transaction: ~20% of the quote value, plus subs
+
+### Option B — Claude's counter (single-sided commission, councils free)
+- **Councils:** free forever (procurement is sticky; price-sensitive; they're the demand-side moat — match Plentific's approach)
+- **Landlords:** tiered subscription
+  - Free for individual landlords (limit on number of open requests)
+  - ~£29/mo for property companies (multi-property, more open requests)
+  - Enterprise contracts for housing associations (multi-user accounts, SLA)
+- **Surveyors:** free tier with limited quotes/month + paid tier for unlimited quotes/visibility + **10% commission on awarded work** (single-sided)
+- Effective take per transaction: 10% from the supply side only; subscription revenue from landlords
+
+### Why the disagreement matters
+- 20% combined take on £500–£5000 jobs ≈ £100–£1000 of friction per deal — high enough that surveyors will quietly arrange repeat work off-platform once trial ends. Two-sided marketplaces that take from both sides usually cap each side at 3–5%.
+- Charging councils a subscription adds procurement-approval friction at exactly the wrong moment in adoption.
+- Single-sided commission keeps incentives aligned: the platform only earns when a surveyor wins paid work.
+
+### Decision criteria when revisiting
+- Research what comparable platforms (Plentific, Procore, Houzz Pro for trades) take from each side
+- Pilot with a small set of councils and landlords to see if subscription is a dealbreaker
+- Model the unit economics on realistic deal volume
+
 ## Open product questions
 
 - Revenue model — subscription for surveyors / commission on awarded work / posting fee for councils?

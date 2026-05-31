@@ -4,6 +4,13 @@ export const UK_REGIONS = [
   'Scotland', 'Wales', 'Northern Ireland',
 ]
 
+export const PROPERTY_TYPES = [
+  { id: 'residential', label: 'Residential' },
+  { id: 'commercial', label: 'Commercial' },
+  { id: 'mixed', label: 'Mixed use' },
+  { id: 'land', label: 'Land / undeveloped' },
+]
+
 export const LANDLORD_TYPES = [
   { id: 'individual', label: 'Individual landlord' },
   { id: 'company', label: 'Property company' },

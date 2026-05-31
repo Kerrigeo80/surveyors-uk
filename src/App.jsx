@@ -9,6 +9,7 @@ import SurveyorDashboard from './pages/SurveyorDashboard.jsx'
 import CouncilDashboard from './pages/CouncilDashboard.jsx'
 import LandlordDashboard from './pages/LandlordDashboard.jsx'
 import AdminDashboard from './pages/AdminDashboard.jsx'
+import BetaTest from './pages/BetaTest.jsx'
 
 function dashFor(user) {
   if (!user) return '/'
@@ -47,6 +48,7 @@ export default function App() {
           <Route path="/council" element={<CouncilDashboard />} />
           <Route path="/landlord" element={<LandlordDashboard />} />
           <Route path="/admin" element={<AdminDashboard />} />
+          <Route path="/beta" element={<BetaTest />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>

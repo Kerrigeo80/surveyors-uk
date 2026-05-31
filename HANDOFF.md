@@ -6,6 +6,53 @@ Format: newest entries at the top. Keep entries short. Delete anything stale.
 
 ---
 
+## 2026-06-01 — Claude Code — Parked items shipped + beta-test flow
+
+### Pricing parked
+Kerri proposed: 3-tier subs for all sides + 10% from each side on awarded work. Claude pushed back (effective 20% take + council subscription is unusual; risks off-platform deals + procurement friction). Both options captured side-by-side in `BUILD-SPEC.md` under "Pricing — two options on the table". Decision deferred until comparable-market research and pilot signal.
+
+### Build A — Property portfolio for landlords
+- `property_type` enum (`residential`, `commercial`, `mixed`, `land`); `properties` table with `landlord_id`, `address`, `postcode`, `region`, `type`, `units`, `notes`; RLS so landlords manage own + surveyors can see the property attached to a request they can quote on.
+- `survey_requests.property_id` (nullable) so requests can attach to a specific property.
+- React: `PROPERTY_TYPES` constant, "My Properties" tab on LandlordDashboard (add/list/remove), property selector in create-request that auto-fills address & region.
+
+### Build B — Notifications (in-app)
+- `notifications` table with `type`, `title`, `body`, `link`, `payload`, `read_at`.
+- DB triggers (SECURITY DEFINER):
+  - Quote inserted → notify the requester
+  - Quote `status` changes to `won`/`lost` → notify the surveyor
+  - Profile `status` changes (admin verification) → notify the surveyor
+  - Request `status` changes (in_progress, completed) → notify the awarded surveyor
+  - Document `status` changes (verified, rejected) → notify the surveyor
+- React: `NotificationsBell` in Header with unread count badge, dropdown with mark-read + mark-all-read, refresh on window focus.
+- Email integration NOT done — system is in-app only. Adding Resend/SendGrid is now a small step (an edge function + a trigger that pg_net's into it). See "What's next".
+
+### Build C — Document storage uploads
+- Private Supabase Storage bucket `credentials` with file paths `{userId}/{timestamp}-{filename}`.
+- RLS on `storage.objects` for the bucket: insert/select/delete gated to the owning user's folder OR admin.
+- React: `UploadQualificationModal` now does a real `supabase.storage.from('credentials').upload(...)` followed by a `credential_documents` insert with `file_path`. `DocumentLink` component generates short-lived signed URLs on click. Visible on the surveyor's qualifications list AND in the admin's Document Review tab.
+
+### Build D — Beta-test flow + feedback capture
+- `feedback` table: `user_id`, `role`, `scenario`, `works_well` (bool), `rating` (1-5), `comment`. RLS lets users insert/see own; admin sees all.
+- New `/beta` route with role-specific guided scenarios (surveyor, council, landlord — 4 each). Each scenario has a checklist + 👍/👎 + comment + per-scenario submit. Plus an "Overall impression" section with a 1-5 rating + free text.
+- Header gets a "🧪 Beta test" button when logged in.
+- Admin gets a "💬 Beta Feedback" tab showing all submissions.
+
+### Current state
+- All four chunks deployed to https://surveyors-uk.vercel.app/
+- New migrations: `add_properties_table`, `add_notifications`, `add_credentials_storage_bucket`, `add_feedback_table`
+- Six new React files: `NotificationsBell`, `DocumentLink`, `BetaTest` page, plus changes across LandlordDashboard, SurveyorDashboard, AdminDashboard, App, Header, AppContext.
+
+### What's next (suggested)
+- **Email send-out** (small): Resend (or SendGrid) account + API key; one edge function `send-notification-email` that takes a notification row and renders/sends; either pg_net trigger on notifications insert, or a webhook called from the existing triggers.
+- **Realtime notifications** (small): swap focus-refresh for `supabase.channel('notifications:user_id=eq.X')` so the bell updates without re-focusing the tab.
+- **Drop `request_interests`** — it's dead. Confirm no rollback risk, then drop.
+- **Code-splitting** — bundle is over 500kB; lazy-load the dashboards.
+- **Multi-user org accounts for housing associations** — still parked.
+- **Rating / review** of surveyors after a completed job — natural Plentific extension.
+
+---
+
 ## 2026-06-01 — Claude Code — Phase 2 shipped: landlords, quotes + lifecycle, LinkedIn pool
 
 ### What was done (Build 1: Landlord role)

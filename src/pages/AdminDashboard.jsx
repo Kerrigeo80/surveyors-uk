@@ -4,6 +4,7 @@ import { useApp } from '../lib/AppContext.jsx'
 import { supabase } from '../lib/supabase.js'
 import { getInitials, formatDateGB, qualLabel } from '../lib/data.js'
 import LinkedInImport from '../components/LinkedInImport.jsx'
+import DocumentLink from '../components/DocumentLink.jsx'
 
 const TABS = [
   { id: 'pending', label: '⏳ Pending Surveyors' },
@@ -12,6 +13,7 @@ const TABS = [
   { id: 'requests', label: '📑 All Requests' },
   { id: 'documents', label: '📄 Document Review' },
   { id: 'linkedin', label: '📥 LinkedIn Pool' },
+  { id: 'feedback', label: '💬 Beta Feedback' },
 ]
 
 export default function AdminDashboard() {
@@ -21,6 +23,7 @@ export default function AdminDashboard() {
   const [allProfiles, setAllProfiles] = useState(null)
   const [allDocuments, setAllDocuments] = useState(null)
   const [linkedinProfiles, setLinkedinProfiles] = useState(null)
+  const [feedbackItems, setFeedbackItems] = useState(null)
 
   if (!currentUser || currentUser.role !== 'admin') {
     return <Navigate to="/login" replace />
@@ -49,6 +52,14 @@ export default function AdminDashboard() {
   if (allProfiles === null) loadProfiles()
   if (allDocuments === null) loadDocuments()
   if (linkedinProfiles === null) loadLinkedin()
+  const loadFeedback = async () => {
+    const { data } = await supabase
+      .from('feedback')
+      .select('*, profiles!feedback_user_id_fkey(name, email)')
+      .order('created_at', { ascending: false })
+    setFeedbackItems(data || [])
+  }
+  if (feedbackItems === null) loadFeedback()
 
   const pendingSurveyors = (allProfiles || []).filter(p => p.role === 'surveyor' && p.status === 'pending')
   const allSurveyors = users.filter(u => u.role === 'surveyor')
@@ -155,6 +166,18 @@ export default function AdminDashboard() {
             </>
           )}
 
+          {tab === 'feedback' && (
+            <div className="card">
+              <div className="card-header">
+                <span className="card-title">Beta feedback ({feedbackItems?.length || 0})</span>
+                <button className="btn btn-outline btn-sm" onClick={loadFeedback}>Refresh</button>
+              </div>
+              {!feedbackItems?.length
+                ? <Empty icon="💬" title="No feedback yet" />
+                : feedbackItems.map(f => <FeedbackRow key={f.id} f={f} />)}
+            </div>
+          )}
+
           {tab === 'documents' && (
             <div className="card">
               <div className="card-header">
@@ -258,7 +281,10 @@ function DocumentRow({ d, onChanged }) {
             <span>{qualLabel(d.type)}</span>
             {d.issue_date && <span>Issued {formatDateGB(d.issue_date)}</span>}
           </div>
-          <div style={{ fontSize: '13px', color: 'var(--text-light)' }}>{d.file_name || '—'}</div>
+          <div style={{ fontSize: '13px', color: 'var(--text-light)' }}>
+            {d.file_name || '—'}{' '}
+            {d.file_path && <DocumentLink filePath={d.file_path} label="(open)" />}
+          </div>
         </div>
         <span className={`badge badge-${d.status}`}>{d.status}</span>
       </div>
@@ -297,6 +323,30 @@ function LinkedInList({ profiles }) {
         ))}
       </tbody>
     </table>
+  )
+}
+
+function FeedbackRow({ f }) {
+  return (
+    <div className="request-card">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
+        <div>
+          <h4>{f.scenario}</h4>
+          <div className="request-meta" style={{ margin: '6px 0' }}>
+            <span>{f.profiles?.name || f.user_id}</span>
+            <span>{f.profiles?.email || ''}</span>
+            <span className="badge badge-qual">{f.role}</span>
+            {f.works_well === true && <span className="badge badge-verified">👍 works</span>}
+            {f.works_well === false && <span className="badge badge-closed">👎 broken</span>}
+            {f.rating && <span>Rating: {f.rating}/5</span>}
+            <span style={{ fontSize: '12px', color: 'var(--text-light)' }}>{formatDateGB(f.created_at)}</span>
+          </div>
+          {f.comment && (
+            <p style={{ fontSize: '14px', color: 'var(--text)', marginTop: '8px', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{f.comment}</p>
+          )}
+        </div>
+      </div>
+    </div>
   )
 }
 

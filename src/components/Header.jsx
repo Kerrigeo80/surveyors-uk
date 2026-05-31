@@ -1,5 +1,6 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { useApp } from '../lib/AppContext.jsx'
+import NotificationsBell from './NotificationsBell.jsx'
 
 export default function Header() {
   const { currentUser, logout } = useApp()
@@ -14,6 +15,13 @@ export default function Header() {
       <div className="header-actions">
         {currentUser ? (
           <>
+            <Link to="/beta" style={{
+              color: 'white', textDecoration: 'none', fontSize: '13px',
+              background: 'rgba(255,255,255,0.15)', padding: '6px 12px', borderRadius: '20px',
+            }}>
+              🧪 Beta test
+            </Link>
+            <NotificationsBell />
             <div className="user-badge">
               {currentUser.role === 'council' ? '🏛' : currentUser.role === 'landlord' ? '🏠' : currentUser.role === 'admin' ? '⭐' : '📋'} {currentUser.name}
             </div>
