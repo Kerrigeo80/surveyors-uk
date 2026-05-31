@@ -1,22 +1,21 @@
 # Surveyors UK — Build Spec
 
-**Canonical source of truth.** Edit this file in place as decisions are made. Do not create parallel versions. Git preserves history — `git log BUILD-SPEC.md` for previous states.
+**Canonical source of truth.** Edit this file in place as decisions are made.
 
-**Last updated:** 2026-05-31
-**Audience:** Claude (Cowork + Claude Code in VS Code), Kerri, future-Kerri
-**Sister documents:** `HANDOFF.md` (session-to-session whiteboard) · `reference/mockup.html` (original visual prototype)
+**Last updated:** 2026-06-01
+**Sister documents:** `HANDOFF.md` (session whiteboard) · `reference/mockup.html` (original visual prototype)
 
 ---
 
 ## What Surveyors UK is
 
-A two-sided matching platform that connects **UK local councils** with **qualified, verified surveyors**.
+A **Plentific-style marketplace** for the UK surveying industry. Three sides:
 
-- **Councils** post survey requirements and receive quotes from verified surveyors in their area.
-- **Surveyors** display credentials (RICS etc.), discover matched council work, and quote on requirements.
-- **Verification** is the moat: all surveyor qualifications are reviewed before they can quote.
+- **Requesters** — councils, landlords (individual through housing associations), other property owners — post survey requirements and receive **quotes** from vetted surveyors.
+- **Surveyors** — vetted professionals who submit quotes on matched work, win jobs, and run them through to completion in-app.
+- **Admin (Talent Network team)** — vets surveyors, reviews credentials, moderates listings, seeds the surveyor pool from imported LinkedIn profiles.
 
-(Description derived from `reference/mockup.html` — confirm/expand with Kerri.)
+**Reference product:** [Plentific](https://plentific.com) — same pattern adapted for surveys instead of repairs/compliance work. Their core loop is: requester posts work → matched contractors quote → requester awards → work runs through stages → completion + invoicing.
 
 ---
 
@@ -24,86 +23,111 @@ A two-sided matching platform that connects **UK local councils** with **qualifi
 
 - React 19 + Vite 8 (JSX, no TypeScript)
 - React Router v7
-- Tailwind v4 (via `@tailwindcss/vite`)
-- Supabase — project ref `zxraxgjzmthgzilgkihb`, region `eu-west-2`
-- Supabase client: `src/lib/supabase.js`
-- Env vars: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` (also configured in Vercel)
-- Hosting: Vercel, auto-deploy from `main` on GitHub (`Kerrigeo80/surveyors-uk`)
-- Live URL: https://surveyors-uk.vercel.app/
-
-Mirrors the structure of [`level-app`](../level-app/).
+- Plain CSS (mockup styles in `src/index.css`) — Tailwind is installed but not in use
+- Supabase — project ref `zxraxgjzmthgzilgkihb`, region `eu-west-2`. Auth (email+password) + Postgres + Storage (planned).
+- Client: `src/lib/supabase.js`. Env: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` (also configured in Vercel).
+- Hosting: Vercel, auto-deploy from `main` on `Kerrigeo80/surveyors-uk`.
+- Live: https://surveyors-uk.vercel.app/
 
 ---
 
 ## Operating principles
 
-_To be defined with Kerri. Likely candidates, borrowed from Level's approach:_
-
-1. **Verified credentials only.** RICS / equivalent qualifications must be reviewed before a surveyor can quote on council work.
-2. **Councils trust the data, not the marketing.** Display facts (qualifications, areas covered, past council work) — no algorithmic "top picks".
-3. **Privacy by design.** Surveyor contact details locked until a council engages; consent flows from day one.
-4. **Geographic + credential matching.** Match councils to surveyors by location and qualification, not paid promotion.
-
----
-
-## Phase 0 — Scaffolding (✓ DONE — 2026-05-31)
-
-- Vite + React + Tailwind + Supabase scaffold mirroring level-app
-- Supabase project created in eu-west-2
-- GitHub repo created, code pushed to `main`
-- Vercel project created, env vars wired in, auto-deploy on push
-- Original HTML mockup preserved at `reference/mockup.html` and also served at `/mockup.html` on production for sharing
+1. **Verified credentials only.** RICS membership + supporting docs reviewed before a surveyor can quote on work.
+2. **Trust the data.** Sort by data (verified first, rating, recency) — never algorithmic "top picks".
+3. **Privacy by design.** Contact details locked behind engagement; consent flows from day one.
+4. **Multi-requester from day one.** Councils, landlords, housing associations — same posting flow, role-specific fields.
+5. **Quote, don't just intro.** Surveyors submit a real quote (price, timeline, scope notes); requester picks one. End-to-end, not lead-gen.
 
 ---
 
-## Phase 1 — Auth + accounts (NOT STARTED)
+## Roles
 
-- Separate registration flows for **councils** and **surveyors**
-- Decide: email + password? email OTP? phone OTP?
-- Demo / preview mode for prospects to look around before signing up (mockup has this — confirm intent)
+| Role | Status default | Capabilities |
+|---|---|---|
+| `surveyor` | `pending` until verified | Browse open requests; submit quotes (planned); upload credentials |
+| `council` | `active` | Post requests; review quotes; award work |
+| `landlord` | `active` (planned) | Same as council but with optional property portfolio |
+| `admin` | `active` | Verify surveyors, review documents, import LinkedIn pool, moderate everything |
 
-## Phase 2 — Surveyor credential capture + verification (NOT STARTED)
-
-- Surveyor uploads RICS membership + supporting docs
-- Admin (Kerri) review queue → approve / reject with notes
-- "Verified" badge surfaces to councils
-
-## Phase 3 — Council requirements + quoting (NOT STARTED)
-
-- Council creates a survey request (location, type, scope, deadline)
-- System matches verified surveyors by qualification + geography
-- Surveyors see matched requests in their dashboard and submit quotes
-- Council compares quotes, selects surveyor
-
-## Phase 4 — Profile pages + dashboards (NOT STARTED)
-
-- Surveyor dashboard: credentials, available requests, quotes submitted
-- Council dashboard: open requests, received quotes, surveyor browse
-- Public-ish surveyor profile (visible to councils once verified)
-
-## Phase 5 — Payments / billing (PARKED — decide model later)
-
-- Listing fee for surveyors? Per-quote fee? Commission on awarded work?
-- Council pays / surveyor pays / both?
+Future: **housing association** as a multi-user variant of `landlord` — a single account with several team members. Defer until single-user landlord works.
 
 ---
 
-## Open questions for Kerri
+## Schema — current (Phase 1 — ✓ DONE)
 
-- **Target market specifics:** all UK councils, or starting with a region?
-- **Revenue model:** subscription, transaction fee, lead-gen fee?
-- **Verification depth:** RICS check only, or also insurance, references, past council work?
-- **Competitive landscape:** who else does this? What's the wedge?
-- **Launch plan:** which councils are the design partners?
+```
+profiles                — auth.users mirror; role + status
+surveyors               — RICS, region, phone, bio, qualifications[]
+councils                — council_name, department, region, phone, about
+survey_requests         — title, type, region, address, deadline, budget, description, status
+request_interests       — surveyor_id × request_id  (will evolve into quotes)
+credential_documents    — uploads with verification status
+```
+
+RLS in place. `is_admin()` and `handle_new_user()` SECURITY DEFINER, EXECUTE revoked from anon. Trigger creates profile + role-row on signup from auth user metadata. Demo data seeded.
+
+## Schema — planned (Phase 2)
+
+```
+landlords               — business_name, contact_name, region, phone, about
+properties              — landlord_id, address, postcode, type (residential/commercial/mixed)
+                          1 landlord → many properties (optional)
+survey_requests         — add property_id (nullable for council requests),
+                          add requester_role (council|landlord),
+                          add lifecycle status (open|quoting_closed|awarded|in_progress|completed|cancelled)
+quotes                  — surveyor_id × request_id, price, days, scope_notes, status (submitted|withdrawn|won|lost)
+                          REPLACES request_interests as the core engagement table
+linkedin_profiles       — unclaimed surveyor seed pool
+                          name, email, rics, region, current_role, company, linkedin_url, raw_csv_row,
+                          claimed_by (FK profiles, nullable), claimed_at, imported_at, imported_by_admin
+```
+
+LinkedIn matching: on signup, server-side check for unclaimed `linkedin_profiles` matching on email (primary) or name+RICS (secondary). If match, show "we think we already have you — claim this profile?" before account is created/finalised.
 
 ---
 
-## Schema (TBD)
+## Phases
 
-No Supabase tables created yet. To be designed once Phase 1/2 details are confirmed. Likely starting tables:
+### Phase 0 — Scaffolding ✓ DONE (2026-05-31)
+Vite/React/Supabase project, Vercel deploy, mockup ported to React with in-memory state.
 
-- `councils` (council org details, contact)
-- `surveyors` (individual or firm details, areas served)
-- `credentials` (RICS membership + uploaded docs, verification status)
-- `survey_requests` (council posts)
-- `quotes` (surveyor responses to requests)
+### Phase 1 — Supabase persistence ✓ DONE (2026-05-31)
+Real auth (email+password), schema with RLS, trigger-based profile creation, admin role, surveyor verification queue, demo accounts seeded.
+
+### Phase 2 — Plentific-style marketplace mechanics (NEXT)
+Build order to be decided with Kerri (see "What's next" below):
+- **2a. Landlord role** — add to enum, registration, dashboard
+- **2b. Property portfolio** — properties table; surveyor requests can target a property
+- **2c. Quoting** — replace `request_interests` with `quotes` (price, days, scope notes); requester compares quotes; award flow
+- **2d. Job lifecycle** — request status progresses open → awarded → in_progress → completed; both sides see stage
+- **2e. LinkedIn seed pool + claim flow** — admin CSV import, claim-on-registration UX
+- **2f. Multi-user org accounts** (housing associations) — defer until 2a–2e land
+
+### Phase 3 — Trust + UX polish (PARKED)
+Ratings/reviews · insurance verification · property type filtering · in-app messaging · email notifications · payment + invoicing.
+
+### Phase 4 — Mobile + scale (PARKED)
+Mobile-first browse for surveyors on the road · push notifications · advanced search · admin analytics.
+
+---
+
+## Auth credentials (dev only)
+
+| Account | Email | Password |
+|---|---|---|
+| Admin (Kerri) | kerri@thetalentnetwork.com.au | _set 2026-06-01, see secure store_ |
+| Demo Surveyor (verified) | james@walkersurveys.co.uk | demo1234 |
+| Demo Surveyor (verified) | sarah@precisionsurveys.co.uk | demo1234 |
+| Demo Surveyor (pending) | david@murrayenv.co.uk | demo1234 |
+| Demo Council | emily@brighton.gov.uk | demo1234 |
+| Demo Council | mark@camden.gov.uk | demo1234 |
+
+---
+
+## Open product questions
+
+- Revenue model — subscription for surveyors / commission on awarded work / posting fee for councils?
+- Verification depth — RICS check only, or also insurance, references, past work?
+- Geographic scope at launch — all UK, or pilot region (Brighton/London since demo data lives there)?
+- Multi-user housing association accounts — what's the smallest housing association we'd target?

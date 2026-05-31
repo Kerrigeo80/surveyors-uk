@@ -6,6 +6,43 @@ Format: newest entries at the top. Keep entries short. Delete anything stale.
 
 ---
 
+## 2026-06-01 — Claude Code — Supabase persistence live + new direction (Plentific-style marketplace)
+
+### What was done
+- Designed and applied initial Supabase schema (`profiles`, `surveyors`, `councils`, `survey_requests`, `request_interests`, `credential_documents`) with full RLS.
+- Built `handle_new_user()` trigger that creates the right role-row on signup from auth metadata.
+- Built `is_admin()` helper for RLS policies; revoked anon EXECUTE on both SECURITY DEFINER functions (security advisory fix).
+- Seeded admin (kerri@thetalentnetwork.com.au), 3 demo surveyors (2 active + 1 pending), 2 demo councils, 4 demo requests, 1 interest, 3 verified credential docs. Demo password: `demo1234`. Admin password generated separately.
+- Replaced in-memory `AppContext.jsx` with a Supabase-backed version (same `useApp()` shape so pages didn't need rewrites). Loads session on mount, listens for auth state changes, reloads on mutation.
+- Updated Register, Login, dashboards to await async actions. Added pending/rejected banners on SurveyorDashboard.
+- Built `AdminDashboard` with five tabs: Pending Surveyors (approve/reject), All Surveyors, Councils, All Requests, Document Review (verify/reject documents).
+- Added `/admin` route. App.jsx now redirects to the right dashboard based on role after login; `PublicOnly` guards login/register.
+- All changes live at https://surveyors-uk.vercel.app/.
+
+### Product direction confirmed this session
+**Plentific is the product reference.** Surveyors UK is becoming a Plentific-style marketplace adapted for surveys:
+- Multiple requester types (councils + landlords incl. housing associations)
+- Quote-based engagement (not just "express interest")
+- Job lifecycle in-app (open → awarded → in_progress → completed)
+- LinkedIn seed pool for surveyors so the marketplace doesn't look empty at launch (admin CSV import → claim-on-registration UX)
+
+### Current state
+- Persistence working end-to-end. Auth, registration, role-gated dashboards, admin verification flow all live.
+- Two security advisories outstanding (pre-existing, not from our schema): `public_bucket_allows_listing` on the leftover `website` bucket, and `auth_leaked_password_protection` disabled. Neither blocks anything.
+- No quoting, no landlords, no LinkedIn pool yet — those are Phase 2.
+
+### What's next — Phase 2 (decided with Kerri but not yet sequenced)
+- **2a. Landlord role** — registration + dashboard mirroring council
+- **2b. Property portfolio** — `properties` table; survey requests can target a property
+- **2c. Quoting** — replace `request_interests` with a real `quotes` table (price, days, scope_notes); requester awards
+- **2d. Job lifecycle** — request statuses: open → quoting_closed → awarded → in_progress → completed
+- **2e. LinkedIn seed pool + claim flow** — admin CSV import; surveyor claims pre-existing profile at registration
+- **2f. Multi-user org accounts** for housing associations — DEFER
+
+Kerri to confirm sequence next session. Recommended first move: **2a landlord** (small, low-risk) followed by **2c quoting** (highest product impact — turns this from "intro service" to "marketplace").
+
+---
+
 ## 2026-05-31 — Claude Code — Initial scaffold, deploy, AND mockup ported to React
 
 ### What was done
