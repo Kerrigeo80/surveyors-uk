@@ -3,6 +3,7 @@ import { Navigate, useNavigate } from 'react-router-dom'
 import { useApp } from '../lib/AppContext.jsx'
 import { supabase } from '../lib/supabase.js'
 import { getInitials, formatDateGB, qualLabel } from '../lib/data.js'
+import LinkedInImport from '../components/LinkedInImport.jsx'
 
 const TABS = [
   { id: 'pending', label: '⏳ Pending Surveyors' },
@@ -10,6 +11,7 @@ const TABS = [
   { id: 'councils', label: '🏛 Councils' },
   { id: 'requests', label: '📑 All Requests' },
   { id: 'documents', label: '📄 Document Review' },
+  { id: 'linkedin', label: '📥 LinkedIn Pool' },
 ]
 
 export default function AdminDashboard() {
@@ -18,6 +20,7 @@ export default function AdminDashboard() {
   const [tab, setTab] = useState('pending')
   const [allProfiles, setAllProfiles] = useState(null)
   const [allDocuments, setAllDocuments] = useState(null)
+  const [linkedinProfiles, setLinkedinProfiles] = useState(null)
 
   if (!currentUser || currentUser.role !== 'admin') {
     return <Navigate to="/login" replace />
@@ -35,9 +38,17 @@ export default function AdminDashboard() {
       .order('created_at', { ascending: false })
     setAllDocuments(data || [])
   }
+  const loadLinkedin = async () => {
+    const { data } = await supabase
+      .from('linkedin_profiles')
+      .select('*, claimer:profiles!linkedin_profiles_claimed_by_fkey(name, email)')
+      .order('imported_at', { ascending: false })
+    setLinkedinProfiles(data || [])
+  }
 
   if (allProfiles === null) loadProfiles()
   if (allDocuments === null) loadDocuments()
+  if (linkedinProfiles === null) loadLinkedin()
 
   const pendingSurveyors = (allProfiles || []).filter(p => p.role === 'surveyor' && p.status === 'pending')
   const allSurveyors = users.filter(u => u.role === 'surveyor')
@@ -127,6 +138,21 @@ export default function AdminDashboard() {
                   </div>
                 ))}
             </div>
+          )}
+
+          {tab === 'linkedin' && (
+            <>
+              <LinkedInImport onImported={loadLinkedin} />
+              <div className="card">
+                <div className="card-header">
+                  <span className="card-title">LinkedIn pool ({linkedinProfiles?.length || 0})</span>
+                  <button className="btn btn-outline btn-sm" onClick={loadLinkedin}>Refresh</button>
+                </div>
+                {!linkedinProfiles?.length
+                  ? <Empty icon="📥" title="No LinkedIn profiles imported yet" />
+                  : <LinkedInList profiles={linkedinProfiles} />}
+              </div>
+            </>
           )}
 
           {tab === 'documents' && (
@@ -243,6 +269,34 @@ function DocumentRow({ d, onChanged }) {
         </div>
       )}
     </div>
+  )
+}
+
+function LinkedInList({ profiles }) {
+  return (
+    <table className="data-table">
+      <thead>
+        <tr>
+          <th>Name</th><th>Email</th><th>RICS</th><th>Region</th><th>Quals</th><th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {profiles.map(p => (
+          <tr key={p.id}>
+            <td>{p.name}</td>
+            <td>{p.email || '—'}</td>
+            <td>{p.rics || '—'}</td>
+            <td>{p.region || '—'}</td>
+            <td style={{ fontSize: '12px' }}>{(p.qualifications || []).join(', ') || '—'}</td>
+            <td>
+              {p.claimed_by
+                ? <span className="badge badge-verified">claimed · {p.claimer?.name || '—'}</span>
+                : <span className="badge badge-pending">unclaimed</span>}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   )
 }
 

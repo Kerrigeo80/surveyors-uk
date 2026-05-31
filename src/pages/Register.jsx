@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useApp } from '../lib/AppContext.jsx'
+import { supabase } from '../lib/supabase.js'
 import { UK_REGIONS, QUALIFICATION_TYPES, LANDLORD_TYPES } from '../lib/data.js'
 
 export default function Register() {
@@ -20,6 +21,35 @@ export default function Register() {
   const [landlordType, setLandlordType] = useState('individual')
   const [address, setAddress] = useState('')
 
+  // LinkedIn match-and-claim state (surveyor only)
+  const [match, setMatch] = useState(null)        // matched LinkedIn profile or null
+  const [claimingId, setClaimingId] = useState(null)
+  const [checking, setChecking] = useState(false)
+  const [checkedKey, setCheckedKey] = useState('')
+
+  const checkLinkedIn = async () => {
+    if (role !== 'surveyor') return
+    setChecking(true)
+    const { data, error } = await supabase.rpc('match_linkedin_profile', {
+      p_email: email || '', p_name: name || '', p_rics: rics || '',
+    })
+    setChecking(false)
+    setCheckedKey(`${email}|${name}|${rics}`)
+    if (error) return
+    setMatch(data?.[0] || null)
+  }
+
+  const claimMatch = () => {
+    if (!match) return
+    setClaimingId(match.id)
+    // Prefill the form fields from the match
+    if (match.rics) setRics(match.rics)
+    if (match.region) setRegion(match.region)
+    if (Array.isArray(match.qualifications) && match.qualifications.length) {
+      setQuals(prev => Array.from(new Set([...prev, ...match.qualifications])))
+    }
+  }
+
   const toggleQual = (id) => {
     setQuals(qs => qs.includes(id) ? qs.filter(q => q !== id) : [...qs, id])
   }
@@ -36,6 +66,18 @@ export default function Register() {
     }
     const ok = await register(data)
     if (ok) {
+      if (claimingId) {
+        // Auth state listener will land us logged in shortly; try the claim then.
+        // Small retry loop to wait for the session to be ready.
+        for (let i = 0; i < 10; i++) {
+          const { data: sess } = await supabase.auth.getSession()
+          if (sess.session) {
+            await supabase.rpc('claim_linkedin_profile', { p_linkedin_id: claimingId })
+            break
+          }
+          await new Promise(r => setTimeout(r, 250))
+        }
+      }
       const dash = role === 'surveyor' ? '/surveyor' : role === 'council' ? '/council' : '/landlord'
       navigate(dash)
     }
@@ -86,6 +128,41 @@ export default function Register() {
               <div className="form-group">
                 <label>RICS Membership Number (if applicable)</label>
                 <input type="text" value={rics} onChange={e => setRics(e.target.value)} placeholder="e.g. 1234567" />
+              </div>
+
+              <div style={{ marginBottom: '18px' }}>
+                <button type="button" className="btn btn-outline btn-sm" disabled={checking || !(email || name || rics)}
+                  onClick={checkLinkedIn}>
+                  {checking ? 'Checking…' : 'Check if we already have your profile'}
+                </button>
+                {checkedKey && !match && !checking && (
+                  <p style={{ fontSize: '12px', color: 'var(--text-light)', marginTop: '8px' }}>
+                    No existing profile found — keep filling in the form below.
+                  </p>
+                )}
+                {match && (
+                  <div style={{ marginTop: '10px', padding: '14px', border: '2px solid var(--primary)', borderRadius: 'var(--radius)', background: '#f0f4ff' }}>
+                    <div style={{ fontWeight: 600, marginBottom: '6px' }}>We think we already have you</div>
+                    <div style={{ fontSize: '13px', color: 'var(--text)' }}>
+                      <strong>{match.name}</strong>
+                      {match.position_title && <> · {match.position_title}</>}
+                      {match.company && <> · {match.company}</>}
+                    </div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-light)', marginTop: '4px' }}>
+                      {match.region || '—'}{match.rics && <> · RICS {match.rics}</>}
+                      {match.qualifications?.length > 0 && <> · {match.qualifications.length} quals</>}
+                    </div>
+                    {!claimingId ? (
+                      <button type="button" className="btn btn-primary btn-sm" style={{ marginTop: '10px' }} onClick={claimMatch}>
+                        Yes — claim & autofill
+                      </button>
+                    ) : (
+                      <div style={{ marginTop: '10px', fontSize: '13px', color: 'var(--success)', fontWeight: 600 }}>
+                        ✓ Will be linked on signup
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
               <div className="form-group">
                 <label>Qualification Types</label>

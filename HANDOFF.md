@@ -6,6 +6,45 @@ Format: newest entries at the top. Keep entries short. Delete anything stale.
 
 ---
 
+## 2026-06-01 — Claude Code — Phase 2 shipped: landlords, quotes + lifecycle, LinkedIn pool
+
+### What was done (Build 1: Landlord role)
+- `landlord` added to `user_role` enum; `landlords` table with `business_name`, `landlord_type`, `region`, `address`, `phone`, `about`.
+- `handle_new_user()` extended to create `landlords` row from signup metadata.
+- `survey_requests_insert` RLS now allows both councils AND landlords.
+- React: `LANDLORD_TYPES` constant, 3-way role selector on Register, full `LandlordDashboard.jsx` mirroring CouncilDashboard, `/landlord` route, landing-page button, Header icon.
+
+### What was done (Build 2: Quotes + job lifecycle)
+- `quote_status` enum (submitted | withdrawn | won | lost); `quotes` table with `price`, `days_to_complete`, `scope_notes`; unique `(request_id, surveyor_id)`.
+- `survey_requests.awarded_quote_id` added; status enum extended with `awarded`, `in_progress`, `completed`, `cancelled`.
+- Migrated existing `request_interests` rows into `quotes` (no price, scope notes flagged as migrated).
+- RLS on quotes: surveyor own; requester sees quotes on their own requests; admin all.
+- `survey_requests_select` updated so surveyors keep seeing requests they've quoted on after status changes.
+- React: new `SubmitQuoteModal`, rewritten `RequestCard` (status badges, price summary, quote button), rewritten `RequestDetailModal` (quote review + Award + In-progress + Completed buttons), `AppContext` mutations: `submitQuote`, `withdrawQuote`, `awardQuote`, `updateRequestStatus`.
+
+### What was done (Build 3: LinkedIn seed pool + claim)
+- `linkedin_profiles` table with `name`, `email`, `rics`, `region`, `position_title`, `company`, `linkedin_url`, `qualifications`, `bio`, `raw_csv_row`, `claimed_by`, `claimed_at`, `imported_at`, `imported_by`. (`current_role` is a Postgres reserved word — renamed to `position_title`.)
+- RLS: admin all; owner sees own claimed; active users can browse unclaimed.
+- `match_linkedin_profile(email, name, rics)` RPC — anon-callable, SECURITY DEFINER, returns at most one likely match.
+- `claim_linkedin_profile(linkedin_id)` RPC — authenticated, links to caller's profile + folds fields into surveyors row.
+- React: `LinkedInImport` component (papaparse-based CSV upload, preview, commit). New `LinkedIn Pool` tab on AdminDashboard showing all imported profiles with claim status. Register page: "Check if we already have your profile" button → calls match RPC → "claim & autofill" UI; after successful signUp, calls claim RPC.
+
+### Current state
+- Persistence end-to-end working for everything in Phase 2.
+- All Phase 2 sub-features deployed: https://surveyors-uk.vercel.app/
+- `papaparse` added to dependencies (CSV parsing).
+- One Postgres advisory remaining from Phase 1: `auth_leaked_password_protection` disabled (toggle in Supabase Auth settings if wanted).
+- `request_interests` table still exists but is no longer written to. Dropping it is a 1-line migration when we're sure no rollback is needed.
+
+### What's next (suggested)
+- **Property portfolio for landlords** (Phase 2b — was deferred): `properties` table + property-typed requests. Useful for housing associations.
+- **Emails / notifications** — surveyors when a request matches them; requesters when quotes arrive; both sides on award/lifecycle changes. Likely via Supabase edge functions + a transactional email provider.
+- **Document storage upload** — credential documents currently just record filenames. Wire to Supabase Storage with a `credentials` bucket and signed URLs.
+- **Drop `request_interests`** once we're confident the quotes flow is the only path forward.
+- **Multi-user org accounts** for housing associations (Phase 2f) — still parked.
+
+---
+
 ## 2026-06-01 — Claude Code — Supabase persistence live + new direction (Plentific-style marketplace)
 
 ### What was done
