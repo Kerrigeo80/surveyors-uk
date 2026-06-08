@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useApp } from '../lib/AppContext.jsx'
 import { formatDateGB, qualLabel, getInitials } from '../lib/data.js'
 import SubmitQuoteModal from './SubmitQuoteModal.jsx'
+import { RatingDisplay, RatingInput } from './RatingStars.jsx'
 
 export default function RequestDetailModal({ request: r, onClose }) {
   const { users, currentUser, awardQuote, withdrawQuote, updateRequestStatus } = useApp()
@@ -96,6 +97,9 @@ export default function RequestDetailModal({ request: r, onClose }) {
                         <div style={{ fontWeight: 600 }}>{surveyor?.name || 'Unknown surveyor'}</div>
                         <span className={`badge badge-${won ? 'verified' : lost ? 'closed' : 'pending'}`}>{q.status}</span>
                       </div>
+                      <div style={{ margin: '4px 0' }}>
+                        <RatingDisplay rating={surveyor?.rating} count={surveyor?.reviewCount} size={13} />
+                      </div>
                       <div className="request-meta" style={{ margin: '4px 0' }}>
                         <span>£{Number(q.price || 0)}</span>
                         <span>{q.days_to_complete || '?'} days</span>
@@ -129,8 +133,85 @@ export default function RequestDetailModal({ request: r, onClose }) {
             Mark Completed
           </button>
         )}
+
+        {/* Review: requester rates the winning surveyor once the job is completed */}
+        {r.status === 'completed' && (() => {
+          const wonQuote = r.quotes.find(q => q.status === 'won')
+          const surveyor = wonQuote ? users.find(u => u.id === wonQuote.surveyor_id) : null
+          if (!wonQuote) return null
+          return (
+            <ReviewSection
+              request={r}
+              surveyorName={surveyor?.name || 'the surveyor'}
+              canReview={isRequester}
+              existing={r.review}
+              onDone={onClose}
+            />
+          )
+        })()}
       </div>
       {showSubmit && <SubmitQuoteModal request={r} onClose={() => { setShowSubmit(false); onClose() }} />}
+    </div>
+  )
+}
+
+function ReviewSection({ request, surveyorName, canReview, existing, onDone }) {
+  const { submitReview } = useApp()
+  const [rating, setRating] = useState(0)
+  const [comment, setComment] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const wrap = {
+    marginTop: '20px', paddingTop: '16px', borderTop: '1px solid var(--border)',
+  }
+
+  // Already reviewed — show it (visible to both requester and surveyor)
+  if (existing) {
+    return (
+      <div style={wrap}>
+        <strong style={{ fontSize: '13px' }}>Review</strong>
+        <div style={{ margin: '8px 0' }}>
+          <RatingDisplay rating={existing.rating} count={null} showCount={false} size={16} />
+        </div>
+        {existing.comment && (
+          <p style={{ fontSize: '13px', color: 'var(--text-light)', lineHeight: 1.5 }}>“{existing.comment}”</p>
+        )}
+      </div>
+    )
+  }
+
+  // Only the requester can leave a review
+  if (!canReview) return null
+
+  const handleSubmit = async () => {
+    if (!rating) return
+    setSaving(true)
+    const ok = await submitReview(request, { rating, comment })
+    setSaving(false)
+    if (ok) onDone()
+  }
+
+  return (
+    <div style={wrap}>
+      <strong style={{ fontSize: '13px' }}>Rate {surveyorName}</strong>
+      <p style={{ fontSize: '12px', color: 'var(--text-light)', margin: '4px 0 10px' }}>
+        How was the completed work? Your rating helps other requesters.
+      </p>
+      <RatingInput value={rating} onChange={setRating} />
+      <textarea
+        rows={3}
+        value={comment}
+        onChange={e => setComment(e.target.value)}
+        placeholder="Optional: a few words about the survey, communication, timeliness…"
+        style={{ width: '100%', marginTop: '10px' }}
+      />
+      <button
+        className="btn btn-primary btn-sm"
+        style={{ marginTop: '10px' }}
+        disabled={!rating || saving}
+        onClick={handleSubmit}>
+        {saving ? 'Submitting…' : 'Submit Review'}
+      </button>
     </div>
   )
 }

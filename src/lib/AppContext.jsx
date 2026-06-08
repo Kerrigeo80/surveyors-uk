@@ -48,19 +48,25 @@ function flattenProfile(profile, surveyor, council, landlord) {
 }
 
 // Build the public `users` list pages expect (other surveyors visible to councils, etc.)
-function buildUsersList(profiles, surveyors, councils, landlords, documentsBySurveyor) {
+function buildUsersList(profiles, surveyors, councils, landlords, documentsBySurveyor, reviewsBySurveyor) {
   const survById = new Map(surveyors.map(s => [s.profile_id, s]))
   const counById = new Map(councils.map(c => [c.profile_id, c]))
   const landById = new Map(landlords.map(l => [l.profile_id, l]))
   return profiles.map(p => {
     if (p.role === 'surveyor') {
       const s = survById.get(p.id)
+      const reviews = reviewsBySurveyor[p.id] || []
       return {
         id: p.id, role: 'surveyor', name: p.name, email: p.email,
         rics: s?.rics || '', region: s?.region || '',
         phone: s?.phone || '', bio: s?.bio || '',
         qualifications: s?.qualifications || [],
         documents: documentsBySurveyor[p.id] || [],
+        reviews,
+        reviewCount: reviews.length,
+        rating: reviews.length
+          ? Math.round((reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length) * 10) / 10
+          : null,
       }
     }
     if (p.role === 'council') {
@@ -84,7 +90,7 @@ function buildUsersList(profiles, surveyors, councils, landlords, documentsBySur
   })
 }
 
-function mapRequest(r, quotesByRequest, currentUserId) {
+function mapRequest(r, quotesByRequest, currentUserId, reviewsByRequest) {
   const quotes = quotesByRequest[r.id] || []
   const myQuote = currentUserId ? quotes.find(q => q.surveyor_id === currentUserId) : null
   return {
@@ -103,6 +109,8 @@ function mapRequest(r, quotesByRequest, currentUserId) {
     awardedQuoteId: r.awarded_quote_id,
     quotes,
     myQuote,
+    // The review left on this completed job, if any (one review per request)
+    review: reviewsByRequest?.[r.id] || null,
     // Kept for backwards-compat with a few call sites; treat as quote count
     interests: quotes.map(q => q.surveyor_id),
   }
@@ -150,9 +158,10 @@ export function AppProvider({ children }) {
       supabase.from('survey_requests').select('*').order('created_at', { ascending: false }),
       supabase.from('quotes').select('*').order('created_at', { ascending: true }),
     ])
-    const [{ data: propertiesData }, { data: notificationsData }] = await Promise.all([
+    const [{ data: propertiesData }, { data: notificationsData }, { data: reviews }] = await Promise.all([
       supabase.from('properties').select('*').order('created_at', { ascending: false }),
       supabase.from('notifications').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(50),
+      supabase.from('reviews').select('*').order('created_at', { ascending: false }),
     ])
 
     if (!mountedRef.current) return
@@ -179,9 +188,25 @@ export function AppProvider({ children }) {
       arr.push(q)
     })
 
+    const reviewsBySurv = {}
+    const reviewsByReq = {}
+    ;(reviews || []).forEach(rv => {
+      const arr = reviewsBySurv[rv.surveyor_id] = reviewsBySurv[rv.surveyor_id] || []
+      arr.push(rv)
+      reviewsByReq[rv.request_id] = rv
+    })
+
+    if (me && me.role === 'surveyor') {
+      me.reviews = reviewsBySurv[me.id] || []
+      me.reviewCount = me.reviews.length
+      me.rating = me.reviews.length
+        ? Math.round((me.reviews.reduce((sum, rv) => sum + rv.rating, 0) / me.reviews.length) * 10) / 10
+        : null
+    }
+
     setCurrentUser(me)
-    setUsers(buildUsersList(profiles || [], surveyors || [], councils || [], landlords || [], docsBySurv))
-    setRequests((rawRequests || []).map(r => mapRequest(r, quotesByReq, userId)))
+    setUsers(buildUsersList(profiles || [], surveyors || [], councils || [], landlords || [], docsBySurv, reviewsBySurv))
+    setRequests((rawRequests || []).map(r => mapRequest(r, quotesByReq, userId, reviewsByReq)))
     setProperties(propertiesData || [])
     setNotifications(notificationsData || [])
   }, [])
@@ -445,6 +470,23 @@ export function AppProvider({ children }) {
     await loadAll(currentUser?.id)
   }, [currentUser, loadAll, showToast])
 
+  const submitReview = useCallback(async (request, { rating, comment }) => {
+    if (!currentUser) return false
+    const wonQuote = request.quotes.find(q => q.status === 'won')
+    if (!wonQuote) { showToast('No awarded surveyor to review', 'error'); return false }
+    const { error } = await supabase.from('reviews').insert({
+      request_id: request.id,
+      surveyor_id: wonQuote.surveyor_id,
+      reviewer_id: currentUser.id,
+      rating: Number(rating),
+      comment: comment || '',
+    })
+    if (error) { showToast(error.message, 'error'); return false }
+    showToast('Review submitted — thank you', 'success')
+    await loadAll(currentUser.id)
+    return true
+  }, [currentUser, loadAll, showToast])
+
   const updateRequestStatus = useCallback(async (reqId, status) => {
     const { error } = await supabase.from('survey_requests').update({ status }).eq('id', reqId)
     if (error) { showToast(error.message, 'error'); return }
@@ -474,7 +516,7 @@ export function AppProvider({ children }) {
     register, login, demoLogin, logout,
     updateCurrentUser, addDocument, createRequest, closeRequest,
     createProperty, deleteProperty,
-    submitQuote, withdrawQuote, awardQuote, updateRequestStatus,
+    submitQuote, withdrawQuote, awardQuote, updateRequestStatus, submitReview,
     setSurveyorStatus, setDocumentStatus,
     markNotificationRead, markAllNotificationsRead, refreshNotifications,
     refresh,
@@ -483,7 +525,7 @@ export function AppProvider({ children }) {
        register, login, demoLogin, logout,
        updateCurrentUser, addDocument, createRequest, closeRequest,
        createProperty, deleteProperty,
-       submitQuote, withdrawQuote, awardQuote, updateRequestStatus,
+       submitQuote, withdrawQuote, awardQuote, updateRequestStatus, submitReview,
        setSurveyorStatus, setDocumentStatus,
        markNotificationRead, markAllNotificationsRead, refreshNotifications,
        refresh, showToast])

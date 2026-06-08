@@ -6,6 +6,18 @@ Format: newest entries at the top. Keep entries short. Delete anything stale.
 
 ---
 
+## 2026-06-09 — Claude Code — Surveyor ratings & reviews
+
+Requesters rate the winning surveyor after a job completes; ratings surface across the app as a public trust signal (serves the "trust the data" operating principle).
+
+- **Schema:** `reviews` table (`request_id` unique → one review per completed job, `surveyor_id`, `reviewer_id`, `rating` 1–5, `comment`). RLS: insert only by the requester who owns a *completed* request for the surveyor who *won* it; readable by all signed-in users; reviewer can amend own; admin all. `notify_on_review_insert` trigger → notifies (and now emails) the surveyor.
+- **AppContext:** loads `reviews`; attaches `rating` (avg, 1dp) + `reviewCount` + `reviews[]` to every surveyor in the users list and to `currentUser`; attaches the per-job `review` to each request; new `submitReview(request, {rating, comment})` mutation.
+- **UI:** new `RatingStars.jsx` (`RatingDisplay` + interactive `RatingInput`). Review form (or the submitted review) on completed jobs in `RequestDetailModal`; ★ rating shown on each quote (helps "trust the data" when awarding); ★ on surveyor cards in Council + Landlord browse tabs; rating stat + "Recent Reviews" block on the surveyor's own overview.
+- **Verified:** `npm run build` clean. Live-flow (complete a job → leave review → surveyor sees it + gets notified) should be eyeballed after deploy.
+- Note: one-sided for now (requester → surveyor). Two-sided (surveyor rates requester) is a future option if wanted.
+
+---
+
 ## 2026-06-09 — Claude Code — Realtime bell + dropped request_interests + code-splitting
 
 Three quick wins off the "What's next" list. **Frontend changes are committed to working tree but NOT yet pushed** — push `main` to deploy to Vercel.

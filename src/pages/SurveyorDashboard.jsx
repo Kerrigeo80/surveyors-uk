@@ -6,6 +6,7 @@ import RequestCard from '../components/RequestCard.jsx'
 import RequestDetailModal from '../components/RequestDetailModal.jsx'
 import UploadQualificationModal from '../components/UploadQualificationModal.jsx'
 import DocumentLink from '../components/DocumentLink.jsx'
+import { RatingDisplay } from '../components/RatingStars.jsx'
 
 const TABS = [
   { id: 'overview', label: '📊 Overview' },
@@ -108,7 +109,30 @@ function OverviewTab({ user, matching, myInterests, onView, onSeeAll }) {
           <div className="stat-value">{(user.documents || []).length}</div>
           <div className="stat-label">Qualifications</div>
         </div>
+        <div className="stat-card">
+          <div className="stat-value">{user.rating != null ? user.rating.toFixed(1) : '—'}</div>
+          <div className="stat-label">{user.reviewCount ? `Rating (${user.reviewCount})` : 'No reviews yet'}</div>
+        </div>
       </div>
+      {(user.reviews || []).length > 0 && (
+        <div className="card">
+          <div className="card-header">
+            <span className="card-title">Recent Reviews</span>
+            <RatingDisplay rating={user.rating} count={user.reviewCount} />
+          </div>
+          {user.reviews.slice(0, 5).map(rv => (
+            <div key={rv.id} style={{ padding: '12px 0', borderBottom: '1px solid var(--border)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <RatingDisplay rating={rv.rating} showCount={false} size={14} />
+                <span style={{ fontSize: '12px', color: 'var(--text-light)' }}>{formatDateGB(rv.created_at)}</span>
+              </div>
+              {rv.comment && (
+                <p style={{ fontSize: '13px', color: 'var(--text-light)', marginTop: '6px', lineHeight: 1.5 }}>“{rv.comment}”</p>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
       <div className="card">
         <div className="card-header">
           <span className="card-title">Recent Matching Requests</span>

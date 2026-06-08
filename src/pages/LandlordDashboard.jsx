@@ -3,6 +3,7 @@ import { Navigate, useNavigate } from 'react-router-dom'
 import { useApp } from '../lib/AppContext.jsx'
 import { UK_REGIONS, QUALIFICATION_TYPES, LANDLORD_TYPES, PROPERTY_TYPES, getInitials, formatDateGB, qualLabel } from '../lib/data.js'
 import RequestDetailModal from '../components/RequestDetailModal.jsx'
+import { RatingDisplay } from '../components/RatingStars.jsx'
 
 const TABS = [
   { id: 'overview', label: '📊 Overview' },
@@ -398,6 +399,9 @@ function SurveyorCard({ s }) {
             {verifiedCount > 0
               ? <span className="badge badge-verified">Verified</span>
               : <span className="badge badge-pending">Pending</span>}
+          </div>
+          <div style={{ margin: '6px 0' }}>
+            <RatingDisplay rating={s.rating} count={s.reviewCount} />
           </div>
           <div className="request-meta" style={{ margin: '6px 0' }}>
             <span>📍 {s.region || 'Not specified'}</span>
