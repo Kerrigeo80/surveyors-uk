@@ -26,13 +26,6 @@ export default function NotificationsBell() {
     return () => document.removeEventListener('mousedown', onClickOutside)
   }, [open])
 
-  // Refresh on focus so notifications feel live without realtime sub
-  useEffect(() => {
-    const onFocus = () => refreshNotifications()
-    window.addEventListener('focus', onFocus)
-    return () => window.removeEventListener('focus', onFocus)
-  }, [refreshNotifications])
-
   const handleClick = async (n) => {
     if (!n.read_at) await markNotificationRead(n.id)
     setOpen(false)

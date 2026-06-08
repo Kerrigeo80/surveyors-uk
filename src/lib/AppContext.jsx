@@ -203,6 +203,32 @@ export function AppProvider({ children }) {
     }
   }, [loadAll])
 
+  // ── Realtime notifications — live bell updates without refocusing the tab ──
+  useEffect(() => {
+    const userId = currentUser?.id
+    if (!userId) return
+    const channel = supabase
+      .channel(`notifications:${userId}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${userId}` },
+        (payload) => {
+          setNotifications(ns =>
+            ns.some(n => n.id === payload.new.id) ? ns : [payload.new, ...ns].slice(0, 50)
+          )
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'notifications', filter: `user_id=eq.${userId}` },
+        (payload) => {
+          setNotifications(ns => ns.map(n => (n.id === payload.new.id ? payload.new : n)))
+        }
+      )
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [currentUser?.id])
+
   // ── Auth ──
   const register = useCallback(async (data) => {
     const metadata = { role: data.role, name: data.name }

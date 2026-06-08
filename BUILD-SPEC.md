@@ -2,7 +2,7 @@
 
 **Canonical source of truth.** Edit this file in place as decisions are made.
 
-**Last updated:** 2026-06-01
+**Last updated:** 2026-06-08
 **Sister documents:** `HANDOFF.md` (session whiteboard) · `reference/mockup.html` (original visual prototype)
 
 ---
@@ -125,37 +125,44 @@ Mobile-first browse for surveyors on the road · push notifications · advanced 
 
 ---
 
-## Pricing — two options on the table (decision parked 2026-06-01)
+## Pricing — DECIDED (2026-06-08)
 
-A 3-month free trial for everyone is locked in for launch. After the trial, two pricing models are under consideration.
+Two revenue streams: a per-transaction **commission** and a per-user **subscription**.
 
-### Option A — Kerri's original proposal
-- **3-tier subscriptions for all three sides** (surveyor / landlord / council)
-- **10% commission from the council/landlord side** AND **10% commission from the surveyor side** on awarded work
-- Effective platform take per transaction: ~20% of the quote value, plus subs
+### 1. Commission — 10%, requester-side, always payable
+- **10% of the awarded job value**, charged to the **requester (council / landlord / housing association) on top** of the surveyor's fee.
+- The surveyor receives their full quoted fee; the platform's 10% is added to what the requester pays.
+- **Example:** £350 full house inspection → surveyor receives £350, requester pays **£385** (£350 + £35 commission).
+- **No trial exemption** — the 10% applies from day one, including during the 3-month subscription-free window.
 
-### Option B — Claude's counter (single-sided commission, councils free)
-- **Councils:** free forever (procurement is sticky; price-sensitive; they're the demand-side moat — match Plentific's approach)
-- **Landlords:** tiered subscription
-  - Free for individual landlords (limit on number of open requests)
-  - ~£29/mo for property companies (multi-property, more open requests)
-  - Enterprise contracts for housing associations (multi-user accounts, SLA)
-- **Surveyors:** free tier with limited quotes/month + paid tier for unlimited quotes/visibility + **10% commission on awarded work** (single-sided)
-- Effective take per transaction: 10% from the supply side only; subscription revenue from landlords
+### 2. Subscriptions — per registered user, both sides, 3 months free
+- Every registered user (surveyor side AND requester side) pays a subscription.
+- **First 3 months free, per user** — the free clock starts on each user's own signup date (not a shared launch window). Needs a per-user `trial_ends_at` field.
+- After the trial, a **tiered subscription** applies. Starter tiers below (£ are placeholders pending a unit-economics pass):
 
-### Why the disagreement matters
-- 20% combined take on £500–£5000 jobs ≈ £100–£1000 of friction per deal — high enough that surveyors will quietly arrange repeat work off-platform once trial ends. Two-sided marketplaces that take from both sides usually cap each side at 3–5%.
-- Charging councils a subscription adds procurement-approval friction at exactly the wrong moment in adoption.
-- Single-sided commission keeps incentives aligned: the platform only earns when a surveyor wins paid work.
+**Surveyor side**
+| Tier | Price (placeholder) | Includes |
+|---|---|---|
+| Free | £0/mo | Limited quotes/month (e.g. 5), standard listing visibility |
+| Pro | ~£29/mo | Unlimited quotes, featured/priority visibility, profile highlights |
 
-### Decision criteria when revisiting
-- Research what comparable platforms (Plentific, Procore, Houzz Pro for trades) take from each side
-- Pilot with a small set of councils and landlords to see if subscription is a dealbreaker
-- Model the unit economics on realistic deal volume
+**Requester side** (tier by org type)
+| Tier | Price (placeholder) | Includes |
+|---|---|---|
+| Individual Landlord | ~£15/mo | Few properties, limited concurrent open requests |
+| Property Company | ~£49/mo | Multi-property portfolio, more concurrent open requests |
+| Council | ~£99/mo | Department use, higher request volume |
+| Housing Association (Enterprise) | Custom / SLA | Multi-user accounts, priority support — ties to the parked multi-user org feature |
+
+### Open pricing sub-decisions (refine before billing build)
+- Exact £ for each tier — run a unit-economics model on realistic deal volume first.
+- Quote/open-request limits per tier (the actual numbers behind "limited").
+- Whether commission is invoiced post-completion or held/escrowed at award time.
+- Payment provider (Stripe is the default assumption for subs + commission).
 
 ## Open product questions
 
-- Revenue model — subscription for surveyors / commission on awarded work / posting fee for councils?
+- ~~Revenue model~~ — DECIDED 2026-06-08, see "Pricing" above (10% requester-side commission + per-user tiered subs, 3 months free).
 - Verification depth — RICS check only, or also insurance, references, past work?
 - Geographic scope at launch — all UK, or pilot region (Brighton/London since demo data lives there)?
 - Multi-user housing association accounts — what's the smallest housing association we'd target?

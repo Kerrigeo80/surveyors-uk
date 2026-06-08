@@ -6,6 +6,56 @@ Format: newest entries at the top. Keep entries short. Delete anything stale.
 
 ---
 
+## 2026-06-09 — Claude Code — Realtime bell + dropped request_interests + code-splitting
+
+Three quick wins off the "What's next" list. **Frontend changes are committed to working tree but NOT yet pushed** — push `main` to deploy to Vercel.
+
+- **Realtime notifications:** `notifications` added to the `supabase_realtime` publication. New `useEffect` in `AppContext.jsx` subscribes to INSERT/UPDATE on the current user's rows and updates the bell live (INSERT prepends w/ dedupe, UPDATE replaces in place). RLS still scopes to own rows. Removed the now-redundant window-focus refresh in `NotificationsBell.jsx` (kept the cheap refresh-on-open as a catch-up).
+- **Dropped `request_interests`:** confirmed zero code references (grep) and that `quotes` fully replaced it; table dropped. Had 1 stale migrated row.
+- **Code-splitting:** dashboards + BetaTest are now `React.lazy` + `<Suspense>` in `App.jsx`. Main bundle 462 kB (was >500 kB; warning cleared). Dashboards are separate chunks (Admin 35 kB, Landlord 16 kB, Surveyor 15 kB, Council 12 kB).
+- **Verified:** `npm run build` succeeds; realtime publication confirmed to include `notifications`. Realtime live-update itself should be eyeballed in-browser after deploy (needs two sessions or a manual insert).
+
+---
+
+## 2026-06-08 — Claude Code — Email send-out wired (needs Resend key to activate)
+
+Built the email delivery channel on top of the existing in-app notifications. All 5 notification flows now get email "for free" — without touching their triggers.
+
+**Architecture**
+- One `AFTER INSERT` trigger on `notifications` → `public.send_notification_email()` (SECURITY DEFINER) → async `net.http_post` to the `send-notification-email` edge function. Resolves recipient from `profiles.email`.
+- Edge function `send-notification-email` (deployed, `verify_jwt=false`): shared-secret auth via `x-webhook-secret`, renders branded HTML, sends via Resend. Source version-controlled at `supabase/functions/send-notification-email/index.ts`.
+- `pg_net` extension enabled. Webhook shared secret stored in Vault as `email_webhook_secret`.
+- **Fail-safe:** the trigger swallows every error and returns NEW — email problems can NEVER break a notification insert. If the Vault secret or Resend key is missing it silently no-ops / returns 200.
+
+**Verified:** test notification insert → trigger fired → pg_net reached the function → got `401` (expected, since edge `WEBHOOK_SECRET` not set yet). Plumbing confirmed end-to-end. Test row cleaned up.
+
+**⚠️ TO ACTIVATE (Kerri's action — can't be done via MCP):**
+1. Create a Resend account → get an API key.
+2. In Supabase dashboard → Edge Functions → `send-notification-email` → Secrets, set:
+   - `RESEND_API_KEY` = (from Resend)
+   - `WEBHOOK_SECRET` = `48764a682b51584ae8b232cb9cf3bcc706cde76ddd4a9308`  (matches the Vault secret)
+   - *(optional later)* `EMAIL_FROM` = a verified-domain sender; until then it uses `onboarding@resend.dev`, which only delivers to your own Resend account email.
+3. Without a verified sending domain, Resend only delivers to the account owner's address — fine for testing; add a domain (e.g. `mail.surveyors-uk.co.uk`) before real users rely on it.
+
+**Note:** no custom domain yet (Kerri confirmed). Sender defaults to Resend onboarding address.
+
+**Security advisor follow-ups (done / known):**
+- Revoked `EXECUTE` from `PUBLIC` on all 6 trigger functions (the 5 `notify_*` + `send_notification_email`) — clears the "anon/authenticated can execute SECURITY DEFINER function" warnings. Trigger functions fire regardless of grants, so this is safe.
+- `pg_net` is installed in the `public` schema (the only schema it allows — it's non-relocatable). The `extension_in_public` advisory for `pg_net` is benign and expected; leave it.
+- Pre-existing, unrelated: `auth_leaked_password_protection` still disabled; `website` public bucket allows listing. Neither touched this session.
+
+---
+
+## 2026-06-08 — Claude Code — Pricing DECIDED (was parked)
+
+Kerri settled the pricing model. Full detail in `BUILD-SPEC.md` → "Pricing — DECIDED". Summary:
+- **Commission:** 10% of awarded job value, **requester-side, added on top**, **always payable** (no trial exemption). £350 job → surveyor gets £350, requester pays £385.
+- **Subscriptions:** every registered user both sides; **3 months free per user from their own signup** (needs per-user `trial_ends_at`); then **tiered**. Starter tiers drafted (surveyor Free/Pro; requester Individual Landlord / Property Company / Council / Housing Association) — £ are placeholders pending unit-economics.
+
+Still open before any billing build: exact £ per tier, the limit numbers behind "limited quotes/open requests", commission timing (post-completion vs escrow at award), payment provider (Stripe assumed). **No billing code written yet** — this was a decision-recording session only.
+
+---
+
 ## 2026-06-01 — Claude Code — Parked items shipped + beta-test flow
 
 ### Pricing parked

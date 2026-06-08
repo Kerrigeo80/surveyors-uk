@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AppProvider, useApp } from './lib/AppContext.jsx'
 import Header from './components/Header.jsx'
@@ -5,11 +6,13 @@ import Toasts from './components/Toasts.jsx'
 import Landing from './pages/Landing.jsx'
 import Register from './pages/Register.jsx'
 import Login from './pages/Login.jsx'
-import SurveyorDashboard from './pages/SurveyorDashboard.jsx'
-import CouncilDashboard from './pages/CouncilDashboard.jsx'
-import LandlordDashboard from './pages/LandlordDashboard.jsx'
-import AdminDashboard from './pages/AdminDashboard.jsx'
-import BetaTest from './pages/BetaTest.jsx'
+
+// Dashboards are heavy and role-gated — split them out of the initial bundle.
+const SurveyorDashboard = lazy(() => import('./pages/SurveyorDashboard.jsx'))
+const CouncilDashboard = lazy(() => import('./pages/CouncilDashboard.jsx'))
+const LandlordDashboard = lazy(() => import('./pages/LandlordDashboard.jsx'))
+const AdminDashboard = lazy(() => import('./pages/AdminDashboard.jsx'))
+const BetaTest = lazy(() => import('./pages/BetaTest.jsx'))
 
 function dashFor(user) {
   if (!user) return '/'
@@ -40,17 +43,19 @@ export default function App() {
       <BrowserRouter>
         <Header />
         <Toasts />
-        <Routes>
-          <Route path="/" element={<RootRoute />} />
-          <Route path="/register" element={<PublicOnly><Register /></PublicOnly>} />
-          <Route path="/login" element={<PublicOnly><Login /></PublicOnly>} />
-          <Route path="/surveyor" element={<SurveyorDashboard />} />
-          <Route path="/council" element={<CouncilDashboard />} />
-          <Route path="/landlord" element={<LandlordDashboard />} />
-          <Route path="/admin" element={<AdminDashboard />} />
-          <Route path="/beta" element={<BetaTest />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+        <Suspense fallback={<div style={{ padding: '64px', textAlign: 'center', color: 'var(--text-light)' }}>Loading…</div>}>
+          <Routes>
+            <Route path="/" element={<RootRoute />} />
+            <Route path="/register" element={<PublicOnly><Register /></PublicOnly>} />
+            <Route path="/login" element={<PublicOnly><Login /></PublicOnly>} />
+            <Route path="/surveyor" element={<SurveyorDashboard />} />
+            <Route path="/council" element={<CouncilDashboard />} />
+            <Route path="/landlord" element={<LandlordDashboard />} />
+            <Route path="/admin" element={<AdminDashboard />} />
+            <Route path="/beta" element={<BetaTest />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </Suspense>
       </BrowserRouter>
     </AppProvider>
   )
