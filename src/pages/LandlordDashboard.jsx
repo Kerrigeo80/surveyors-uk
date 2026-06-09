@@ -4,6 +4,7 @@ import { useApp } from '../lib/AppContext.jsx'
 import { UK_REGIONS, QUALIFICATION_TYPES, LANDLORD_TYPES, PROPERTY_TYPES, getInitials, formatDateGB, qualLabel } from '../lib/data.js'
 import RequestDetailModal from '../components/RequestDetailModal.jsx'
 import { RatingDisplay } from '../components/RatingStars.jsx'
+import ChangePassword from '../components/ChangePassword.jsx'
 
 const TABS = [
   { id: 'overview', label: '📊 Overview' },
@@ -438,6 +439,7 @@ function ProfileTab() {
   }
 
   return (
+    <>
     <div className="card">
       <h3 style={{ marginBottom: '20px' }}>Edit Landlord Profile</h3>
       <form onSubmit={handleSubmit}>
@@ -477,5 +479,7 @@ function ProfileTab() {
         <button type="submit" className="btn btn-primary">Save Changes</button>
       </form>
     </div>
+    <ChangePassword />
+    </>
   )
 }

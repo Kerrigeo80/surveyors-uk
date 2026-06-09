@@ -316,6 +316,13 @@ export function AppProvider({ children }) {
     showToast('Signed out')
   }, [showToast])
 
+  const changePassword = useCallback(async (newPassword) => {
+    const { error } = await supabase.auth.updateUser({ password: newPassword })
+    if (error) { showToast(error.message, 'error'); return false }
+    showToast('Password updated', 'success')
+    return true
+  }, [showToast])
+
   // ── Mutations ──
   const updateCurrentUser = useCallback(async (patch) => {
     if (!currentUser) return
@@ -513,7 +520,7 @@ export function AppProvider({ children }) {
 
   const value = useMemo(() => ({
     session, currentUser, users, requests, properties, notifications, toasts, ready,
-    register, login, demoLogin, logout,
+    register, login, demoLogin, logout, changePassword,
     updateCurrentUser, addDocument, createRequest, closeRequest,
     createProperty, deleteProperty,
     submitQuote, withdrawQuote, awardQuote, updateRequestStatus, submitReview,
@@ -522,7 +529,7 @@ export function AppProvider({ children }) {
     refresh,
     showToast,
   }), [session, currentUser, users, requests, properties, notifications, toasts, ready,
-       register, login, demoLogin, logout,
+       register, login, demoLogin, logout, changePassword,
        updateCurrentUser, addDocument, createRequest, closeRequest,
        createProperty, deleteProperty,
        submitQuote, withdrawQuote, awardQuote, updateRequestStatus, submitReview,

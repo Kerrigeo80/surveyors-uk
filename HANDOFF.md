@@ -6,6 +6,17 @@ Format: newest entries at the top. Keep entries short. Delete anything stale.
 
 ---
 
+## 2026-06-09 — Claude Code — Self-serve change password
+
+Added an in-app change-password form (there was none before — password resets needed the Supabase dashboard or a manual SQL update).
+
+- `changePassword(newPassword)` mutation in AppContext → `supabase.auth.updateUser({ password })`.
+- Reusable `ChangePassword.jsx` (new password + confirm, min 8 chars, client-side validation, stays signed in).
+- Wired into every role's profile area: Surveyor / Council / Landlord profile tabs (below the profile form), and a new `🔑 Account` tab on AdminDashboard.
+- Verified: `npm run build` clean. **Kerri can now change the temp admin password from /admin → Account.**
+
+---
+
 ## 2026-06-09 — Claude Code — Surveyor ratings & reviews
 
 Requesters rate the winning surveyor after a job completes; ratings surface across the app as a public trust signal (serves the "trust the data" operating principle).

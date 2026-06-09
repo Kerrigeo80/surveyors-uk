@@ -7,6 +7,7 @@ import RequestDetailModal from '../components/RequestDetailModal.jsx'
 import UploadQualificationModal from '../components/UploadQualificationModal.jsx'
 import DocumentLink from '../components/DocumentLink.jsx'
 import { RatingDisplay } from '../components/RatingStars.jsx'
+import ChangePassword from '../components/ChangePassword.jsx'
 
 const TABS = [
   { id: 'overview', label: '📊 Overview' },
@@ -268,6 +269,7 @@ function ProfileTab() {
   }
 
   return (
+    <>
     <div className="card">
       <h3 style={{ marginBottom: '20px' }}>Edit Profile</h3>
       <form onSubmit={handleSubmit}>
@@ -310,5 +312,7 @@ function ProfileTab() {
         <button type="submit" className="btn btn-primary">Save Changes</button>
       </form>
     </div>
+    <ChangePassword />
+    </>
   )
 }

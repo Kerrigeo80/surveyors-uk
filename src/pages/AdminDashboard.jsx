@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase.js'
 import { getInitials, formatDateGB, qualLabel } from '../lib/data.js'
 import LinkedInImport from '../components/LinkedInImport.jsx'
 import DocumentLink from '../components/DocumentLink.jsx'
+import ChangePassword from '../components/ChangePassword.jsx'
 
 const TABS = [
   { id: 'pending', label: '⏳ Pending Surveyors' },
@@ -14,6 +15,7 @@ const TABS = [
   { id: 'documents', label: '📄 Document Review' },
   { id: 'linkedin', label: '📥 LinkedIn Pool' },
   { id: 'feedback', label: '💬 Beta Feedback' },
+  { id: 'account', label: '🔑 Account' },
 ]
 
 export default function AdminDashboard() {
@@ -188,6 +190,8 @@ export default function AdminDashboard() {
                 : allDocuments.map(d => <DocumentRow key={d.id} d={d} onChanged={loadDocuments} />)}
             </div>
           )}
+
+          {tab === 'account' && <ChangePassword />}
         </div>
       </div>
     </div>
