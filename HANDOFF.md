@@ -6,6 +6,21 @@ Format: newest entries at the top. Keep entries short. Delete anything stale.
 
 ---
 
+## 2026-06-10 — Claude Code — Property-type filtering
+
+Both sides of the marketplace now carry a property type and can be filtered by it. (1st of an agreed sequence: property-type filtering → insurance verification → in-app messaging → payment/invoicing.)
+
+- **Schema:** `survey_requests.property_type` (nullable, reuses the `property_type` enum), backfilled from any linked property. `surveyors.property_types text[]` (ids matching `PROPERTY_TYPES`).
+- **AppContext:** `propertyType` mapped onto requests + sent in `createRequest`; `propertyTypes` on surveyor `currentUser`/users list + saved via `updateCurrentUser`.
+- **Forms:** property-type dropdown on both create-request forms (landlord auto-fills from the chosen property); property-types checkboxes on the surveyor profile.
+- **Display:** property type on RequestCard + RequestDetailModal; "🏠 types handled" on surveyor browse cards (Council + Landlord).
+- **Filters:** property-type dropdown added to the surveyor's Available Requests browse and to both requesters' Browse Surveyors tabs.
+- **Verified:** `npm run build` clean. Data helper `propertyTypeLabel()` added to `data.js`.
+
+**Next up: insurance verification** — surveyors upload PI insurance docs, admin verifies, verified-insurance badge on profiles. Will extend the existing `credential_documents` flow (consider a dedicated `insurance` document type + a derived "insured" flag).
+
+---
+
 ## 2026-06-09 — Claude Code — Self-serve change password
 
 Added an in-app change-password form (there was none before — password resets needed the Supabase dashboard or a manual SQL update).

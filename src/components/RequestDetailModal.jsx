@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useApp } from '../lib/AppContext.jsx'
-import { formatDateGB, qualLabel, getInitials } from '../lib/data.js'
+import { formatDateGB, qualLabel, getInitials, propertyTypeLabel } from '../lib/data.js'
 import SubmitQuoteModal from './SubmitQuoteModal.jsx'
 import { RatingDisplay, RatingInput } from './RatingStars.jsx'
 
@@ -30,6 +30,7 @@ export default function RequestDetailModal({ request: r, onClose }) {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
           <Field label="Requester" value={requesterLabel} />
           <Field label="Survey Type" value={<span className="badge badge-qual">{qualLabel(r.type)}</span>} />
+          {r.propertyType && <Field label="Property Type" value={propertyTypeLabel(r.propertyType)} />}
           <Field label="Location" value={r.address} />
           <Field label="Region" value={r.region} />
           <Field label="Deadline" value={deadlineStr} />

@@ -21,6 +21,7 @@ function flattenProfile(profile, surveyor, council, landlord) {
       phone: surveyor.phone || '',
       bio: surveyor.bio || '',
       qualifications: surveyor.qualifications || [],
+      propertyTypes: surveyor.property_types || [],
     }
   }
   if (profile.role === 'council' && council) {
@@ -61,6 +62,7 @@ function buildUsersList(profiles, surveyors, councils, landlords, documentsBySur
         rics: s?.rics || '', region: s?.region || '',
         phone: s?.phone || '', bio: s?.bio || '',
         qualifications: s?.qualifications || [],
+        propertyTypes: s?.property_types || [],
         documents: documentsBySurveyor[p.id] || [],
         reviews,
         reviewCount: reviews.length,
@@ -107,6 +109,7 @@ function mapRequest(r, quotesByRequest, currentUserId, reviewsByRequest) {
     status: r.status,
     createdAt: r.created_at,
     awardedQuoteId: r.awarded_quote_id,
+    propertyType: r.property_type,
     quotes,
     myQuote,
     // The review left on this completed job, if any (one review per request)
@@ -339,6 +342,7 @@ export function AppProvider({ children }) {
       if (patch.phone !== undefined) survPatch.phone = patch.phone
       if (patch.bio !== undefined) survPatch.bio = patch.bio
       if (patch.qualifications !== undefined) survPatch.qualifications = patch.qualifications
+      if (patch.propertyTypes !== undefined) survPatch.property_types = patch.propertyTypes
       if (Object.keys(survPatch).length) {
         await supabase.from('surveyors').update(survPatch).eq('profile_id', currentUser.id)
       }
@@ -386,6 +390,7 @@ export function AppProvider({ children }) {
       address: req.address, deadline: req.deadline, budget: req.budget || null,
       description: req.description, contact: req.contact, status: 'open',
       property_id: req.propertyId || null,
+      property_type: req.propertyType || null,
     })
     if (error) { showToast(error.message, 'error'); return }
     showToast('Survey request published!', 'success')

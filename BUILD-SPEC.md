@@ -105,8 +105,8 @@ Build order to be decided with Kerri (see "What's next" below):
 - **2f. Multi-user org accounts** (housing associations) — defer until 2a–2e land
 
 ### Phase 3 — Trust + UX polish (IN PROGRESS)
-Done: ratings/reviews (2026-06-09) · email notifications (2026-06-08, needs Resend key to activate).
-Remaining: insurance verification · property type filtering · in-app messaging · payment + invoicing.
+Done: ratings/reviews (2026-06-09) · email notifications (2026-06-08, needs Resend key to activate) · property type filtering (2026-06-10).
+Remaining (in agreed order): insurance verification → in-app messaging → payment + invoicing.
 
 ### Phase 4 — Mobile + scale (PARKED)
 Mobile-first browse for surveyors on the road · push notifications · advanced search · admin analytics.

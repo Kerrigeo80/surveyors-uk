@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { useApp } from '../lib/AppContext.jsx'
-import { UK_REGIONS, QUALIFICATION_TYPES, getInitials, formatDateGB, qualLabel } from '../lib/data.js'
+import { UK_REGIONS, QUALIFICATION_TYPES, PROPERTY_TYPES, getInitials, formatDateGB, qualLabel } from '../lib/data.js'
 import RequestCard from '../components/RequestCard.jsx'
 import RequestDetailModal from '../components/RequestDetailModal.jsx'
 import UploadQualificationModal from '../components/UploadQualificationModal.jsx'
@@ -197,11 +197,13 @@ function RequestsTab({ onView }) {
   const [search, setSearch] = useState('')
   const [qualFilter, setQualFilter] = useState('')
   const [regionFilter, setRegionFilter] = useState('')
+  const [propTypeFilter, setPropTypeFilter] = useState('')
 
   let filtered = requests.filter(r => r.status === 'open')
   if (search) filtered = filtered.filter(r => r.title.toLowerCase().includes(search.toLowerCase()) || r.description.toLowerCase().includes(search.toLowerCase()))
   if (qualFilter) filtered = filtered.filter(r => r.type === qualFilter)
   if (regionFilter) filtered = filtered.filter(r => r.region === regionFilter)
+  if (propTypeFilter) filtered = filtered.filter(r => r.propertyType === propTypeFilter)
 
   return (
     <div className="card">
@@ -217,6 +219,10 @@ function RequestsTab({ onView }) {
         <select value={regionFilter} onChange={e => setRegionFilter(e.target.value)}>
           <option value="">All regions</option>
           {UK_REGIONS.map(r => <option key={r} value={r}>{r}</option>)}
+        </select>
+        <select value={propTypeFilter} onChange={e => setPropTypeFilter(e.target.value)}>
+          <option value="">All property types</option>
+          {PROPERTY_TYPES.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
         </select>
       </div>
       {filtered.length === 0 ? (
@@ -259,12 +265,14 @@ function ProfileTab() {
   const [region, setRegion] = useState(currentUser.region || '')
   const [bio, setBio] = useState(currentUser.bio || '')
   const [quals, setQuals] = useState(currentUser.qualifications || [])
+  const [propTypes, setPropTypes] = useState(currentUser.propertyTypes || [])
 
   const toggleQual = (id) => setQuals(qs => qs.includes(id) ? qs.filter(q => q !== id) : [...qs, id])
+  const togglePropType = (id) => setPropTypes(ps => ps.includes(id) ? ps.filter(p => p !== id) : [...ps, id])
 
   const handleSubmit = (e) => {
     e.preventDefault()
-    updateCurrentUser({ name, phone, rics, region, bio, qualifications: quals })
+    updateCurrentUser({ name, phone, rics, region, bio, qualifications: quals, propertyTypes: propTypes })
     showToast('Profile updated', 'success')
   }
 
@@ -301,6 +309,17 @@ function ProfileTab() {
               <label key={q.id} style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '13px', padding: '4px 8px', border: '1px solid var(--border)', borderRadius: '6px', cursor: 'pointer' }}>
                 <input type="checkbox" checked={quals.includes(q.id)} onChange={() => toggleQual(q.id)} />
                 {q.label}
+              </label>
+            ))}
+          </div>
+        </div>
+        <div className="form-group">
+          <label>Property Types Handled</label>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '4px' }}>
+            {PROPERTY_TYPES.map(t => (
+              <label key={t.id} style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '13px', padding: '4px 8px', border: '1px solid var(--border)', borderRadius: '6px', cursor: 'pointer' }}>
+                <input type="checkbox" checked={propTypes.includes(t.id)} onChange={() => togglePropType(t.id)} />
+                {t.label}
               </label>
             ))}
           </div>

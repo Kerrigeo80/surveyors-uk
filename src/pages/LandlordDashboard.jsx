@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { useApp } from '../lib/AppContext.jsx'
-import { UK_REGIONS, QUALIFICATION_TYPES, LANDLORD_TYPES, PROPERTY_TYPES, getInitials, formatDateGB, qualLabel } from '../lib/data.js'
+import { UK_REGIONS, QUALIFICATION_TYPES, LANDLORD_TYPES, PROPERTY_TYPES, getInitials, formatDateGB, qualLabel, propertyTypeLabel } from '../lib/data.js'
 import RequestDetailModal from '../components/RequestDetailModal.jsx'
 import { RatingDisplay } from '../components/RatingStars.jsx'
 import ChangePassword from '../components/ChangePassword.jsx'
@@ -164,7 +164,7 @@ function CreateRequestTab({ landlord, onCreated }) {
   const [form, setForm] = useState({
     title: '', type: '', region: landlord.region || '', address: landlord.address || '',
     deadline: '', budget: '', description: '', contact: landlord.email || '',
-    propertyId: '',
+    propertyId: '', propertyType: '',
   })
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }))
 
@@ -179,6 +179,7 @@ function CreateRequestTab({ landlord, onCreated }) {
           propertyId: id,
           address: p.address,
           region: p.region || f.region,
+          propertyType: p.type || f.propertyType,
         }))
       }
     }
@@ -224,6 +225,13 @@ function CreateRequestTab({ landlord, onCreated }) {
               {UK_REGIONS.map(r => <option key={r} value={r}>{r}</option>)}
             </select>
           </div>
+        </div>
+        <div className="form-group">
+          <label>Property Type (optional)</label>
+          <select value={form.propertyType} onChange={set('propertyType')}>
+            <option value="">Not specified</option>
+            {PROPERTY_TYPES.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+          </select>
         </div>
         <div className="form-group">
           <label>Site Address</label>
@@ -348,11 +356,13 @@ function SurveyorsTab() {
   const [search, setSearch] = useState('')
   const [qualFilter, setQualFilter] = useState('')
   const [regionFilter, setRegionFilter] = useState('')
+  const [propTypeFilter, setPropTypeFilter] = useState('')
 
   let surveyors = users.filter(u => u.role === 'surveyor')
   if (search) surveyors = surveyors.filter(s => s.name.toLowerCase().includes(search.toLowerCase()) || (s.bio || '').toLowerCase().includes(search.toLowerCase()))
   if (qualFilter) surveyors = surveyors.filter(s => s.qualifications?.includes(qualFilter))
   if (regionFilter) surveyors = surveyors.filter(s => s.region === regionFilter)
+  if (propTypeFilter) surveyors = surveyors.filter(s => s.propertyTypes?.includes(propTypeFilter))
 
   return (
     <div className="card">
@@ -368,6 +378,10 @@ function SurveyorsTab() {
         <select value={regionFilter} onChange={e => setRegionFilter(e.target.value)}>
           <option value="">All regions</option>
           {UK_REGIONS.map(r => <option key={r} value={r}>{r}</option>)}
+        </select>
+        <select value={propTypeFilter} onChange={e => setPropTypeFilter(e.target.value)}>
+          <option value="">All property types</option>
+          {PROPERTY_TYPES.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
         </select>
       </div>
       {surveyors.length === 0 ? (
@@ -412,6 +426,11 @@ function SurveyorCard({ s }) {
           <div style={{ margin: '8px 0' }}>
             {qualLabels.map((q, i) => <span key={i} className="badge badge-qual">{q}</span>)}
           </div>
+          {(s.propertyTypes || []).length > 0 && (
+            <div className="request-meta" style={{ margin: '6px 0' }}>
+              <span>🏠 {s.propertyTypes.map(propertyTypeLabel).join(', ')}</span>
+            </div>
+          )}
           {s.bio && (
             <p style={{ fontSize: '13px', color: 'var(--text-light)', marginTop: '8px', lineHeight: 1.5 }}>
               {s.bio.length > 150 ? s.bio.substring(0, 150) + '...' : s.bio}

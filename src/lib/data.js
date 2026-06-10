@@ -115,3 +115,7 @@ export function formatDateGB(iso, withYear = true) {
 export function qualLabel(id) {
   return QUALIFICATION_TYPES.find(q => q.id === id)?.label || id
 }
+
+export function propertyTypeLabel(id) {
+  return PROPERTY_TYPES.find(t => t.id === id)?.label || id
+}

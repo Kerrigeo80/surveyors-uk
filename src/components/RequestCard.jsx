@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useApp } from '../lib/AppContext.jsx'
-import { formatDateGB, qualLabel } from '../lib/data.js'
+import { formatDateGB, qualLabel, propertyTypeLabel } from '../lib/data.js'
 import SubmitQuoteModal from './SubmitQuoteModal.jsx'
 
 const STATUS_LABEL = {
@@ -51,6 +51,7 @@ export default function RequestCard({ request: r, compact, onView, showQuoteActi
           <span>🏛 {requesterLabel}</span>
           <span>📍 {r.region}</span>
           <span>📅 Due {formatDateGB(r.deadline)}</span>
+          {r.propertyType && <span>🏠 {propertyTypeLabel(r.propertyType)}</span>}
           <span className="badge badge-qual">{qualLabel(r.type)}</span>
         </div>
         {!compact && (
