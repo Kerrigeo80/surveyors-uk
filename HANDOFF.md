@@ -6,6 +6,35 @@ Format: newest entries at the top. Keep entries short. Delete anything stale.
 
 ---
 
+## 2026-06-11 — Claude Code — In-app messaging: BACKEND DONE, UI TODO ⚠️ RESUME HERE
+
+3rd of the sequence (property-type ✓ → insurance ✓ → **messaging (in progress)** → payment). **The backend is built, committed, and the tree builds green. The UI is NOT built yet.** Pick up from "UI — TODO" below.
+
+### DONE — DB (applied & live in Supabase)
+- `conversations` (id, request_id, requester_id, surveyor_id, created_at; `unique(request_id, surveyor_id)`) — one thread per (request, surveyor).
+- `messages` (id, conversation_id, sender_id, body, read_at, created_at).
+- RLS: participant-only via SECURITY DEFINER `is_conversation_participant(uuid)`. conversations insert requires `requester_id = the request's council_id`. messages insert requires `sender_id = auth.uid()` + participant. messages update (read_at) by participants. Admin full on conversations.
+- `messages` added to `supabase_realtime` publication (RLS applies on the sub).
+- `notify_on_message_insert` trigger → notifies (+emails) the recipient; notification `link` = `/{recipientRole}?tab=messages`.
+
+### DONE — AppContext (committed, builds)
+- New `conversations` state: array of `{ id, request_id, requester_id, surveyor_id, created_at, messages: [...] }`, loaded in `loadAll` (two queries: conversations + messages, grouped). Cleared on logout.
+- Mutations exposed via `useApp()`:
+  - `sendMessage({ conversationId? , requestId?, surveyorId?, requesterId?, body })` — pass `conversationId` for an existing thread, OR `(requestId, surveyorId, requesterId)` to find-or-create one (`ensureConversation`). Returns bool. Reloads after send.
+  - `markConversationRead(conversationId)` — marks the *other* party's messages read (optimistic + DB).
+- Realtime: the notifications channel `useEffect` now also subscribes to `messages` INSERT (RLS-scoped). Appends to the matching conversation; if the conversation is unknown (other party just started it), calls `loadAll` to pull it in.
+
+### UI — TODO (next session starts here; nothing below exists yet)
+1. **`src/components/ConversationThread.jsx`** — props `{ conversation, peerName, send, height=320 }`. Renders `conversation.messages` as left/right bubbles (mine = `sender_id === currentUser.id`, primary bg right-aligned), auto-scrolls to bottom, marks read on show via `markConversationRead`. Composer input + Send button calls `send(text)` (a `(body)=>Promise<bool>` the parent supplies). Handle `conversation` being null (no messages yet → "Say hello").
+2. **`src/components/Messages.jsx`** — inbox: 2-col grid (conversation list | active thread). For each conversation: peer = `requester_id===me ? surveyor_id : requester_id`, resolve name from `users`, request title from `requests`, unread = messages where `sender_id!==me && !read_at`, show last-message snippet + unread badge. Renders `<ConversationThread send={(body)=>sendMessage({ conversationId: active.id, body })}/>`. Empty state when no conversations.
+3. **Dashboard tabs** — add `{ id: 'messages', label: '💬 Messages' }` to TABS in SurveyorDashboard, CouncilDashboard, LandlordDashboard; render `<Messages/>`; show an unread badge on the nav item (compute from `conversations`). Initialise tab from `?tab=messages` query param: `useState(() => new URLSearchParams(window.location.search).get('tab') || 'overview')` so the notification deep-link lands on Messages.
+4. **RequestDetailModal entry points** — surveyor viewing a request: a thread with the requester (`send` = `sendMessage({ requestId: r.id, surveyorId: currentUser.id, requesterId: r.councilId, body })`). Requester viewing quotes: a "Message" button per quote → opens a thread with that surveyor (`sendMessage({ requestId: r.id, surveyorId: q.surveyor_id, requesterId: currentUser.id, body })`). Find the existing conversation in `conversations` by `(r.id, surveyorId)` to pass as `conversation`.
+5. `npm run build`, then commit + push.
+
+Note: payment (item 4) is blocked on the pricing tier £ numbers being settled.
+
+---
+
 ## 2026-06-11 — Claude Code — Insurance verification (PI)
 
 Surveyors submit professional indemnity insurance; admin verifies; an "Insured" badge surfaces to requesters. (2nd of the sequence: property-type filtering ✓ → insurance verification ✓ → in-app messaging → payment/invoicing.)

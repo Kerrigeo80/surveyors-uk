@@ -132,6 +132,7 @@ export function AppProvider({ children }) {
   const [requests, setRequests] = useState([])
   const [properties, setProperties] = useState([])
   const [notifications, setNotifications] = useState([])
+  const [conversations, setConversations] = useState([])
   const [toasts, setToasts] = useState([])
   const [ready, setReady] = useState(false)
   const mountedRef = useRef(true)
@@ -146,6 +147,7 @@ export function AppProvider({ children }) {
   const loadAll = useCallback(async (userId) => {
     if (!userId) {
       setCurrentUser(null); setUsers([]); setRequests([])
+      setNotifications([]); setConversations([])
       return
     }
     const [
@@ -167,14 +169,26 @@ export function AppProvider({ children }) {
       supabase.from('survey_requests').select('*').order('created_at', { ascending: false }),
       supabase.from('quotes').select('*').order('created_at', { ascending: true }),
     ])
-    const [{ data: propertiesData }, { data: notificationsData }, { data: reviews }, { data: myInsurance }] = await Promise.all([
+    const [
+      { data: propertiesData }, { data: notificationsData }, { data: reviews },
+      { data: myInsurance }, { data: convs }, { data: msgs },
+    ] = await Promise.all([
       supabase.from('properties').select('*').order('created_at', { ascending: false }),
       supabase.from('notifications').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(50),
       supabase.from('reviews').select('*').order('created_at', { ascending: false }),
       supabase.from('insurance_policies').select('*').eq('surveyor_id', userId).maybeSingle(),
+      supabase.from('conversations').select('*').order('created_at', { ascending: false }),
+      supabase.from('messages').select('*').order('created_at', { ascending: true }),
     ])
 
     if (!mountedRef.current) return
+
+    const msgsByConv = {}
+    ;(msgs || []).forEach(m => {
+      const arr = msgsByConv[m.conversation_id] = msgsByConv[m.conversation_id] || []
+      arr.push(m)
+    })
+    const conversationsData = (convs || []).map(c => ({ ...c, messages: msgsByConv[c.id] || [] }))
 
     const docsBySurv = {}
     ;(documents || []).forEach(d => {
@@ -220,6 +234,7 @@ export function AppProvider({ children }) {
     setRequests((rawRequests || []).map(r => mapRequest(r, quotesByReq, userId, reviewsByReq)))
     setProperties(propertiesData || [])
     setNotifications(notificationsData || [])
+    setConversations(conversationsData)
   }, [])
 
   // ── Wire up auth session ──
@@ -261,9 +276,30 @@ export function AppProvider({ children }) {
           setNotifications(ns => ns.map(n => (n.id === payload.new.id ? payload.new : n)))
         }
       )
+      // Messages: RLS limits delivery to conversations this user is part of.
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'messages' },
+        (payload) => {
+          const m = payload.new
+          setConversations(cs => {
+            const known = cs.some(c => c.id === m.conversation_id)
+            if (!known) {
+              // First message of a conversation the other party just started — pull it in.
+              loadAll(userId)
+              return cs
+            }
+            return cs.map(c => {
+              if (c.id !== m.conversation_id) return c
+              if (c.messages.some(x => x.id === m.id)) return c
+              return { ...c, messages: [...c.messages, m] }
+            })
+          })
+        }
+      )
       .subscribe()
     return () => { supabase.removeChannel(channel) }
-  }, [currentUser?.id])
+  }, [currentUser?.id, loadAll])
 
   // ── Auth ──
   const register = useCallback(async (data) => {
@@ -480,6 +516,50 @@ export function AppProvider({ children }) {
     setNotifications(data || [])
   }, [currentUser])
 
+  // ── Messaging ──
+  // Ensure a conversation exists for (request, surveyor) and return its id.
+  const ensureConversation = useCallback(async (requestId, surveyorId, requesterId) => {
+    const existing = conversations.find(c => c.request_id === requestId && c.surveyor_id === surveyorId)
+    if (existing) return existing.id
+    const { data, error } = await supabase.from('conversations')
+      .insert({ request_id: requestId, requester_id: requesterId, surveyor_id: surveyorId })
+      .select('id').single()
+    if (error) {
+      // Possible race: someone else created it. Re-fetch.
+      const { data: found } = await supabase.from('conversations').select('id')
+        .eq('request_id', requestId).eq('surveyor_id', surveyorId).maybeSingle()
+      if (found) return found.id
+      showToast(error.message, 'error')
+      return null
+    }
+    return data.id
+  }, [conversations, showToast])
+
+  // body + EITHER an existing conversationId OR (requestId, surveyorId, requesterId) to create one.
+  const sendMessage = useCallback(async ({ conversationId, requestId, surveyorId, requesterId, body }) => {
+    if (!currentUser || !body.trim()) return false
+    let convId = conversationId
+    if (!convId) convId = await ensureConversation(requestId, surveyorId, requesterId)
+    if (!convId) return false
+    const { error } = await supabase.from('messages').insert({
+      conversation_id: convId, sender_id: currentUser.id, body: body.trim(),
+    })
+    if (error) { showToast(error.message, 'error'); return false }
+    await loadAll(currentUser.id)
+    return true
+  }, [currentUser, ensureConversation, loadAll, showToast])
+
+  const markConversationRead = useCallback(async (conversationId) => {
+    if (!currentUser) return
+    const now = new Date().toISOString()
+    setConversations(cs => cs.map(c => c.id !== conversationId ? c : {
+      ...c,
+      messages: c.messages.map(m => (m.sender_id !== currentUser.id && !m.read_at) ? { ...m, read_at: now } : m),
+    }))
+    await supabase.from('messages').update({ read_at: now })
+      .eq('conversation_id', conversationId).neq('sender_id', currentUser.id).is('read_at', null)
+  }, [currentUser])
+
   const closeRequest = useCallback(async (reqId) => {
     const { error } = await supabase.from('survey_requests').update({ status: 'closed' }).eq('id', reqId)
     if (error) { showToast(error.message, 'error'); return }
@@ -569,22 +649,24 @@ export function AppProvider({ children }) {
   const refresh = useCallback(() => loadAll(currentUser?.id), [currentUser, loadAll])
 
   const value = useMemo(() => ({
-    session, currentUser, users, requests, properties, notifications, toasts, ready,
+    session, currentUser, users, requests, properties, notifications, conversations, toasts, ready,
     register, login, demoLogin, logout, changePassword,
     updateCurrentUser, addDocument, createRequest, closeRequest,
     createProperty, deleteProperty,
     submitQuote, withdrawQuote, awardQuote, updateRequestStatus, submitReview,
     submitInsurance, setInsuranceStatus,
+    sendMessage, markConversationRead,
     setSurveyorStatus, setDocumentStatus,
     markNotificationRead, markAllNotificationsRead, refreshNotifications,
     refresh,
     showToast,
-  }), [session, currentUser, users, requests, properties, notifications, toasts, ready,
+  }), [session, currentUser, users, requests, properties, notifications, conversations, toasts, ready,
        register, login, demoLogin, logout, changePassword,
        updateCurrentUser, addDocument, createRequest, closeRequest,
        createProperty, deleteProperty,
        submitQuote, withdrawQuote, awardQuote, updateRequestStatus, submitReview,
        submitInsurance, setInsuranceStatus,
+       sendMessage, markConversationRead,
        setSurveyorStatus, setDocumentStatus,
        markNotificationRead, markAllNotificationsRead, refreshNotifications,
        refresh, showToast])
