@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { useApp } from '../lib/AppContext.jsx'
-import { UK_REGIONS, QUALIFICATION_TYPES, PROPERTY_TYPES, getInitials, formatDateGB, qualLabel, propertyTypeLabel } from '../lib/data.js'
+import { UK_REGIONS, QUALIFICATION_TYPES, PROPERTY_TYPES, getInitials, formatDateGB, qualLabel, propertyTypeLabel, isInsured } from '../lib/data.js'
 import RequestDetailModal from '../components/RequestDetailModal.jsx'
 import { RatingDisplay } from '../components/RatingStars.jsx'
 import ChangePassword from '../components/ChangePassword.jsx'
@@ -292,9 +292,12 @@ function SurveyorCard({ s }) {
         <div style={{ flex: 1 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
             <h4>{s.name}</h4>
-            {verifiedCount > 0
-              ? <span className="badge badge-verified">Verified</span>
-              : <span className="badge badge-pending">Pending</span>}
+            <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
+              {verifiedCount > 0
+                ? <span className="badge badge-verified">Verified</span>
+                : <span className="badge badge-pending">Pending</span>}
+              {isInsured(s) && <span className="badge badge-verified">🛡 Insured</span>}
+            </div>
           </div>
           <div style={{ margin: '6px 0' }}>
             <RatingDisplay rating={s.rating} count={s.reviewCount} />

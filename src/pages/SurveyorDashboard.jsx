@@ -153,9 +153,82 @@ function OverviewTab({ user, matching, myInterests, onView, onSeeAll }) {
   )
 }
 
+function InsuranceCard({ user }) {
+  const { submitInsurance } = useApp()
+  const ins = user.insurance
+  const [insurer, setInsurer] = useState(ins?.insurer || '')
+  const [policyNumber, setPolicyNumber] = useState(ins?.policy_number || '')
+  const [coverageAmount, setCoverageAmount] = useState(ins?.coverage_amount || '')
+  const [expiryDate, setExpiryDate] = useState(ins?.expiry_date || '')
+  const [file, setFile] = useState(null)
+  const [saving, setSaving] = useState(false)
+
+  const status = user.insuranceStatus || 'none'
+  const statusBadge = status === 'none'
+    ? <span className="badge badge-pending">not submitted</span>
+    : <span className={`badge badge-${status}`}>{status}</span>
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    if (!insurer) return
+    setSaving(true)
+    const ok = await submitInsurance({ insurer, policyNumber, coverageAmount, expiryDate, file })
+    setSaving(false)
+    if (ok) setFile(null)
+  }
+
+  return (
+    <div className="card" style={{ marginBottom: '20px' }}>
+      <div className="card-header">
+        <span className="card-title">🛡 Professional Indemnity Insurance</span>
+        {statusBadge}
+      </div>
+      {ins?.expiry_date && (
+        <p style={{ fontSize: '13px', color: 'var(--text-light)', marginBottom: '12px' }}>
+          Current policy expires {formatDateGB(ins.expiry_date)}.
+          {ins.file_path && <> · <DocumentLink filePath={ins.file_path} label="View document" /></>}
+        </p>
+      )}
+      <form onSubmit={handleSubmit}>
+        <div className="form-row">
+          <div className="form-group">
+            <label>Insurer</label>
+            <input type="text" value={insurer} onChange={e => setInsurer(e.target.value)} placeholder="e.g. Hiscox" required />
+          </div>
+          <div className="form-group">
+            <label>Policy Number</label>
+            <input type="text" value={policyNumber} onChange={e => setPolicyNumber(e.target.value)} />
+          </div>
+        </div>
+        <div className="form-row">
+          <div className="form-group">
+            <label>Cover Amount (£)</label>
+            <input type="number" value={coverageAmount} onChange={e => setCoverageAmount(e.target.value)} placeholder="1000000" />
+          </div>
+          <div className="form-group">
+            <label>Expiry Date</label>
+            <input type="date" value={expiryDate} onChange={e => setExpiryDate(e.target.value)} />
+          </div>
+        </div>
+        <label className="upload-zone" htmlFor="insFile" style={{ display: 'block' }}>
+          <div className="upload-icon">📁</div>
+          <p>{file ? file.name : (ins?.file_name ? `Current: ${ins.file_name} — click to replace` : 'Click to attach your insurance certificate (PDF, JPG, PNG)')}</p>
+          <input id="insFile" type="file" accept=".pdf,.jpg,.jpeg,.png" style={{ display: 'none' }}
+            onChange={e => setFile(e.target.files[0] || null)} />
+        </label>
+        <button type="submit" className="btn btn-primary" disabled={saving || !insurer}>
+          {saving ? 'Submitting…' : (status === 'none' ? 'Submit for Verification' : 'Update & Resubmit')}
+        </button>
+      </form>
+    </div>
+  )
+}
+
 function QualificationsTab({ user, onUpload }) {
   const docs = user.documents || []
   return (
+    <>
+    <InsuranceCard user={user} />
     <div className="card">
       <div className="card-header">
         <span className="card-title">My Qualifications</span>
@@ -189,6 +262,7 @@ function QualificationsTab({ user, onUpload }) {
         </ul>
       )}
     </div>
+    </>
   )
 }
 

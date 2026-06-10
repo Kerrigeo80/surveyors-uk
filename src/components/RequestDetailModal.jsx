@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useApp } from '../lib/AppContext.jsx'
-import { formatDateGB, qualLabel, getInitials, propertyTypeLabel } from '../lib/data.js'
+import { formatDateGB, qualLabel, getInitials, propertyTypeLabel, isInsured } from '../lib/data.js'
 import SubmitQuoteModal from './SubmitQuoteModal.jsx'
 import { RatingDisplay, RatingInput } from './RatingStars.jsx'
 
@@ -98,8 +98,9 @@ export default function RequestDetailModal({ request: r, onClose }) {
                         <div style={{ fontWeight: 600 }}>{surveyor?.name || 'Unknown surveyor'}</div>
                         <span className={`badge badge-${won ? 'verified' : lost ? 'closed' : 'pending'}`}>{q.status}</span>
                       </div>
-                      <div style={{ margin: '4px 0' }}>
+                      <div style={{ margin: '4px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <RatingDisplay rating={surveyor?.rating} count={surveyor?.reviewCount} size={13} />
+                        {isInsured(surveyor) && <span className="badge badge-verified">🛡 Insured</span>}
                       </div>
                       <div className="request-meta" style={{ margin: '4px 0' }}>
                         <span>£{Number(q.price || 0)}</span>

@@ -119,3 +119,10 @@ export function qualLabel(id) {
 export function propertyTypeLabel(id) {
   return PROPERTY_TYPES.find(t => t.id === id)?.label || id
 }
+
+// A surveyor counts as insured only with a verified, non-expired policy.
+export function isInsured(s) {
+  if (!s || s.insuranceStatus !== 'verified') return false
+  if (!s.insuranceExpiry) return true
+  return new Date(s.insuranceExpiry) >= new Date(new Date().toDateString())
+}

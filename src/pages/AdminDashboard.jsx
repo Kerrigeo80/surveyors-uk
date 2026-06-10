@@ -13,6 +13,7 @@ const TABS = [
   { id: 'councils', label: '🏛 Councils' },
   { id: 'requests', label: '📑 All Requests' },
   { id: 'documents', label: '📄 Document Review' },
+  { id: 'insurance', label: '🛡 Insurance' },
   { id: 'linkedin', label: '📥 LinkedIn Pool' },
   { id: 'feedback', label: '💬 Beta Feedback' },
   { id: 'account', label: '🔑 Account' },
@@ -24,6 +25,7 @@ export default function AdminDashboard() {
   const [tab, setTab] = useState('pending')
   const [allProfiles, setAllProfiles] = useState(null)
   const [allDocuments, setAllDocuments] = useState(null)
+  const [insurancePolicies, setInsurancePolicies] = useState(null)
   const [linkedinProfiles, setLinkedinProfiles] = useState(null)
   const [feedbackItems, setFeedbackItems] = useState(null)
 
@@ -51,8 +53,17 @@ export default function AdminDashboard() {
     setLinkedinProfiles(data || [])
   }
 
+  const loadInsurance = async () => {
+    const { data } = await supabase
+      .from('insurance_policies')
+      .select('*, profiles!insurance_policies_surveyor_id_fkey(name, email)')
+      .order('created_at', { ascending: false })
+    setInsurancePolicies(data || [])
+  }
+
   if (allProfiles === null) loadProfiles()
   if (allDocuments === null) loadDocuments()
+  if (insurancePolicies === null) loadInsurance()
   if (linkedinProfiles === null) loadLinkedin()
   const loadFeedback = async () => {
     const { data } = await supabase
@@ -191,6 +202,17 @@ export default function AdminDashboard() {
             </div>
           )}
 
+          {tab === 'insurance' && (
+            <div className="card">
+              <div className="card-header">
+                <span className="card-title">Insurance ({insurancePolicies?.length || 0})</span>
+                <button className="btn btn-outline btn-sm" onClick={loadInsurance}>Refresh</button>
+              </div>
+              {!insurancePolicies?.length ? <Empty icon="🛡" title="No insurance submitted yet" />
+                : insurancePolicies.map(p => <InsuranceRow key={p.surveyor_id} p={p} onChanged={loadInsurance} />)}
+            </div>
+          )}
+
           {tab === 'account' && <ChangePassword />}
         </div>
       </div>
@@ -296,6 +318,38 @@ function DocumentRow({ d, onChanged }) {
         <div style={{ marginTop: '12px', display: 'flex', gap: '8px' }}>
           <button className="btn btn-primary btn-sm" onClick={async () => { await setDocumentStatus(d.id, 'verified'); onChanged() }}>Verify</button>
           <button className="btn btn-danger btn-sm" onClick={async () => { await setDocumentStatus(d.id, 'rejected'); onChanged() }}>Reject</button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function InsuranceRow({ p, onChanged }) {
+  const { setInsuranceStatus } = useApp()
+  const owner = p.profiles
+  return (
+    <div className="request-card">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
+        <div>
+          <h4>{p.insurer}</h4>
+          <div className="request-meta" style={{ margin: '6px 0' }}>
+            <span>{owner?.name || '—'}</span>
+            <span>{owner?.email || '—'}</span>
+            {p.policy_number && <span>Policy {p.policy_number}</span>}
+            {p.coverage_amount && <span>£{Number(p.coverage_amount).toLocaleString()} cover</span>}
+            {p.expiry_date && <span>Expires {formatDateGB(p.expiry_date)}</span>}
+          </div>
+          <div style={{ fontSize: '13px', color: 'var(--text-light)' }}>
+            {p.file_name || '—'}{' '}
+            {p.file_path && <DocumentLink filePath={p.file_path} label="(open)" />}
+          </div>
+        </div>
+        <span className={`badge badge-${p.status}`}>{p.status}</span>
+      </div>
+      {p.status === 'pending' && (
+        <div style={{ marginTop: '12px', display: 'flex', gap: '8px' }}>
+          <button className="btn btn-primary btn-sm" onClick={async () => { await setInsuranceStatus(p.surveyor_id, 'verified'); onChanged() }}>Verify</button>
+          <button className="btn btn-danger btn-sm" onClick={async () => { await setInsuranceStatus(p.surveyor_id, 'rejected'); onChanged() }}>Reject</button>
         </div>
       )}
     </div>

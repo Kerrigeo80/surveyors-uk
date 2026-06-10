@@ -6,6 +6,21 @@ Format: newest entries at the top. Keep entries short. Delete anything stale.
 
 ---
 
+## 2026-06-11 — Claude Code — Insurance verification (PI)
+
+Surveyors submit professional indemnity insurance; admin verifies; an "Insured" badge surfaces to requesters. (2nd of the sequence: property-type filtering ✓ → insurance verification ✓ → in-app messaging → payment/invoicing.)
+
+- **Schema:** private `insurance_policies` (one per surveyor: insurer, policy_number, coverage_amount, expiry_date, file, `document_status`). Detail rows are surveyor-own + admin only (policy numbers stay private). Denormalised `surveyors.insurance_status / insurance_expiry / insurance_coverage` are publicly readable so the badge works without exposing detail.
+- **Security:** `enforce_insurance_status` BEFORE trigger forces any non-admin write to `pending` — **surveyors can't self-verify**. `sync_insurance_policy` AFTER trigger keeps the denormalised fields current and notifies (+emails) the surveyor on verify/reject. Both SECURITY DEFINER, search_path set, EXECUTE revoked from public.
+- **Storage:** reuses the existing `credentials` bucket (path `{userId}/insurance-…`).
+- **AppContext:** insurance fields on surveyor `currentUser`/users list; own policy detail loaded as `currentUser.insurance`; `submitInsurance` (upload+upsert, always pending) and `setInsuranceStatus` (admin) mutations.
+- **UI:** insurance card on the surveyor's Qualifications tab (insurer/policy/cover/expiry + cert upload + status); new admin **🛡 Insurance** tab (verify/reject + doc link); "🛡 Insured" badge on surveyor browse cards (Council + Landlord) and on each quote in RequestDetailModal. `isInsured()` helper (verified + non-expired) in `data.js`.
+- **Verified:** `npm run build` clean.
+
+**Next up: in-app messaging** — requester ↔ surveyor thread per request/quote. New table + RLS (participants only) + realtime + UI. Largest of the remaining UI features.
+
+---
+
 ## 2026-06-10 — Claude Code — Property-type filtering
 
 Both sides of the marketplace now carry a property type and can be filtered by it. (1st of an agreed sequence: property-type filtering → insurance verification → in-app messaging → payment/invoicing.)

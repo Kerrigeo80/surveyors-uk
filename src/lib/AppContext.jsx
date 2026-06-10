@@ -22,6 +22,9 @@ function flattenProfile(profile, surveyor, council, landlord) {
       bio: surveyor.bio || '',
       qualifications: surveyor.qualifications || [],
       propertyTypes: surveyor.property_types || [],
+      insuranceStatus: surveyor.insurance_status || 'none',
+      insuranceExpiry: surveyor.insurance_expiry || null,
+      insuranceCoverage: surveyor.insurance_coverage || null,
     }
   }
   if (profile.role === 'council' && council) {
@@ -63,6 +66,9 @@ function buildUsersList(profiles, surveyors, councils, landlords, documentsBySur
         phone: s?.phone || '', bio: s?.bio || '',
         qualifications: s?.qualifications || [],
         propertyTypes: s?.property_types || [],
+        insuranceStatus: s?.insurance_status || 'none',
+        insuranceExpiry: s?.insurance_expiry || null,
+        insuranceCoverage: s?.insurance_coverage || null,
         documents: documentsBySurveyor[p.id] || [],
         reviews,
         reviewCount: reviews.length,
@@ -161,10 +167,11 @@ export function AppProvider({ children }) {
       supabase.from('survey_requests').select('*').order('created_at', { ascending: false }),
       supabase.from('quotes').select('*').order('created_at', { ascending: true }),
     ])
-    const [{ data: propertiesData }, { data: notificationsData }, { data: reviews }] = await Promise.all([
+    const [{ data: propertiesData }, { data: notificationsData }, { data: reviews }, { data: myInsurance }] = await Promise.all([
       supabase.from('properties').select('*').order('created_at', { ascending: false }),
       supabase.from('notifications').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(50),
       supabase.from('reviews').select('*').order('created_at', { ascending: false }),
+      supabase.from('insurance_policies').select('*').eq('surveyor_id', userId).maybeSingle(),
     ])
 
     if (!mountedRef.current) return
@@ -205,6 +212,7 @@ export function AppProvider({ children }) {
       me.rating = me.reviews.length
         ? Math.round((me.reviews.reduce((sum, rv) => sum + rv.rating, 0) / me.reviews.length) * 10) / 10
         : null
+      me.insurance = myInsurance || null
     }
 
     setCurrentUser(me)
@@ -382,6 +390,43 @@ export function AppProvider({ children }) {
     await loadAll(currentUser.id)
   }, [currentUser, loadAll, showToast])
 
+  const submitInsurance = useCallback(async ({ insurer, policyNumber, coverageAmount, expiryDate, file }) => {
+    if (!currentUser) return false
+    let filePath = currentUser.insurance?.file_path || null
+    let fileName = currentUser.insurance?.file_name || null
+    if (file) {
+      const safeName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_')
+      const path = `${currentUser.id}/insurance-${Date.now()}-${safeName}`
+      const { error: upErr } = await supabase.storage.from('credentials').upload(path, file, {
+        upsert: false, contentType: file.type || 'application/octet-stream',
+      })
+      if (upErr) { showToast('Upload failed: ' + upErr.message, 'error'); return false }
+      filePath = path
+      fileName = file.name
+    }
+    const { error } = await supabase.from('insurance_policies').upsert({
+      surveyor_id: currentUser.id,
+      insurer,
+      policy_number: policyNumber || '',
+      coverage_amount: coverageAmount ? Number(coverageAmount) : null,
+      expiry_date: expiryDate || null,
+      file_name: fileName,
+      file_path: filePath,
+      status: 'pending',
+    }, { onConflict: 'surveyor_id' })
+    if (error) { showToast(error.message, 'error'); return false }
+    showToast('Insurance submitted — pending verification', 'success')
+    await loadAll(currentUser.id)
+    return true
+  }, [currentUser, loadAll, showToast])
+
+  const setInsuranceStatus = useCallback(async (surveyorId, status) => {
+    const { error } = await supabase.from('insurance_policies').update({ status }).eq('surveyor_id', surveyorId)
+    if (error) { showToast(error.message, 'error'); return }
+    showToast(`Insurance ${status}`, 'success')
+    await loadAll(currentUser?.id)
+  }, [currentUser, loadAll, showToast])
+
   const createRequest = useCallback(async (req) => {
     if (!currentUser) return
     const { error } = await supabase.from('survey_requests').insert({
@@ -529,6 +574,7 @@ export function AppProvider({ children }) {
     updateCurrentUser, addDocument, createRequest, closeRequest,
     createProperty, deleteProperty,
     submitQuote, withdrawQuote, awardQuote, updateRequestStatus, submitReview,
+    submitInsurance, setInsuranceStatus,
     setSurveyorStatus, setDocumentStatus,
     markNotificationRead, markAllNotificationsRead, refreshNotifications,
     refresh,
@@ -538,6 +584,7 @@ export function AppProvider({ children }) {
        updateCurrentUser, addDocument, createRequest, closeRequest,
        createProperty, deleteProperty,
        submitQuote, withdrawQuote, awardQuote, updateRequestStatus, submitReview,
+       submitInsurance, setInsuranceStatus,
        setSurveyorStatus, setDocumentStatus,
        markNotificationRead, markAllNotificationsRead, refreshNotifications,
        refresh, showToast])
