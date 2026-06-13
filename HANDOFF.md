@@ -6,9 +6,16 @@ Format: newest entries at the top. Keep entries short. Delete anything stale.
 
 ---
 
-## 2026-06-11 — Claude Code — In-app messaging: BACKEND DONE, UI TODO ⚠️ RESUME HERE
+## 2026-06-13 — Claude Code — In-app messaging: COMPLETE ✓
 
-3rd of the sequence (property-type ✓ → insurance ✓ → **messaging (in progress)** → payment). **The backend is built, committed, and the tree builds green. The UI is NOT built yet.** Pick up from "UI — TODO" below.
+3rd of the sequence (property-type ✓ → insurance ✓ → **messaging ✓** → payment). Backend (DB + AppContext) and UI are both done; tree builds green.
+
+### DONE — UI (committed)
+- `src/components/ConversationThread.jsx` — left/right bubbles (mine = primary bg, right-aligned), auto-scrolls to bottom, marks read on show via `markConversationRead`, composer input + Send. Handles a null `conversation` ("Say hello to …").
+- `src/components/Messages.jsx` — inbox: conversation-list | active-thread grid. Per conversation resolves peer name, request title, unread count, last-message snippet; sorted by last activity; empty state.
+- `data.js` helpers `unreadInConversation` / `totalUnreadMessages`.
+- 💬 Messages tab added to Surveyor / Council / Landlord dashboards, with an unread badge on the nav item. Tab initialises from `?tab=messages` and a `useLocation` effect follows query-param changes (so a message-notification deep-link lands on Messages even when already on the dashboard).
+- RequestDetailModal entry points: surveyor gets an "Open chat" toggle with the requester; requester gets a "💬 Message" toggle per quote. Both find the existing `(request, surveyor)` conversation or start one on first send.
 
 ### DONE — DB (applied & live in Supabase)
 - `conversations` (id, request_id, requester_id, surveyor_id, created_at; `unique(request_id, surveyor_id)`) — one thread per (request, surveyor).
@@ -24,14 +31,8 @@ Format: newest entries at the top. Keep entries short. Delete anything stale.
   - `markConversationRead(conversationId)` — marks the *other* party's messages read (optimistic + DB).
 - Realtime: the notifications channel `useEffect` now also subscribes to `messages` INSERT (RLS-scoped). Appends to the matching conversation; if the conversation is unknown (other party just started it), calls `loadAll` to pull it in.
 
-### UI — TODO (next session starts here; nothing below exists yet)
-1. **`src/components/ConversationThread.jsx`** — props `{ conversation, peerName, send, height=320 }`. Renders `conversation.messages` as left/right bubbles (mine = `sender_id === currentUser.id`, primary bg right-aligned), auto-scrolls to bottom, marks read on show via `markConversationRead`. Composer input + Send button calls `send(text)` (a `(body)=>Promise<bool>` the parent supplies). Handle `conversation` being null (no messages yet → "Say hello").
-2. **`src/components/Messages.jsx`** — inbox: 2-col grid (conversation list | active thread). For each conversation: peer = `requester_id===me ? surveyor_id : requester_id`, resolve name from `users`, request title from `requests`, unread = messages where `sender_id!==me && !read_at`, show last-message snippet + unread badge. Renders `<ConversationThread send={(body)=>sendMessage({ conversationId: active.id, body })}/>`. Empty state when no conversations.
-3. **Dashboard tabs** — add `{ id: 'messages', label: '💬 Messages' }` to TABS in SurveyorDashboard, CouncilDashboard, LandlordDashboard; render `<Messages/>`; show an unread badge on the nav item (compute from `conversations`). Initialise tab from `?tab=messages` query param: `useState(() => new URLSearchParams(window.location.search).get('tab') || 'overview')` so the notification deep-link lands on Messages.
-4. **RequestDetailModal entry points** — surveyor viewing a request: a thread with the requester (`send` = `sendMessage({ requestId: r.id, surveyorId: currentUser.id, requesterId: r.councilId, body })`). Requester viewing quotes: a "Message" button per quote → opens a thread with that surveyor (`sendMessage({ requestId: r.id, surveyorId: q.surveyor_id, requesterId: currentUser.id, body })`). Find the existing conversation in `conversations` by `(r.id, surveyorId)` to pass as `conversation`.
-5. `npm run build`, then commit + push.
-
-Note: payment (item 4) is blocked on the pricing tier £ numbers being settled.
+### NEXT UP — payment / invoicing (last planned feature)
+Blocked on the pricing tier £ numbers being settled (model decided 2026-06-08: 10% requester-side commission on top + per-user subscriptions, 3 months free then tiered — see `BUILD-SPEC.md`). No billing code written yet.
 
 ---
 

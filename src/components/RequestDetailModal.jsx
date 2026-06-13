@@ -2,11 +2,14 @@ import { useState } from 'react'
 import { useApp } from '../lib/AppContext.jsx'
 import { formatDateGB, qualLabel, getInitials, propertyTypeLabel, isInsured } from '../lib/data.js'
 import SubmitQuoteModal from './SubmitQuoteModal.jsx'
+import ConversationThread from './ConversationThread.jsx'
 import { RatingDisplay, RatingInput } from './RatingStars.jsx'
 
 export default function RequestDetailModal({ request: r, onClose }) {
-  const { users, currentUser, awardQuote, withdrawQuote, updateRequestStatus } = useApp()
+  const { users, currentUser, conversations, sendMessage, awardQuote, withdrawQuote, updateRequestStatus } = useApp()
   const [showSubmit, setShowSubmit] = useState(false)
+  const [showThread, setShowThread] = useState(false)     // surveyor ↔ requester
+  const [msgSurveyorId, setMsgSurveyorId] = useState(null) // requester → which surveyor
   if (!r) return null
 
   const council = users.find(u => u.id === r.councilId)
@@ -17,6 +20,9 @@ export default function RequestDetailModal({ request: r, onClose }) {
   const isAdmin = currentUser?.role === 'admin'
   const isSurveyor = currentUser?.role === 'surveyor'
   const myQuote = r.myQuote
+
+  // Existing thread for (this request, a given surveyor), or null if none yet.
+  const findConv = (surveyorId) => conversations.find(c => c.request_id === r.id && c.surveyor_id === surveyorId) || null
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -70,6 +76,27 @@ export default function RequestDetailModal({ request: r, onClose }) {
           </div>
         )}
 
+        {/* Surveyor: message the requester */}
+        {isSurveyor && currentUser.status === 'active' && (
+          <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid var(--border)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <strong style={{ fontSize: '13px' }}>Message {requesterLabel}</strong>
+              <button className="btn btn-outline btn-sm" onClick={() => setShowThread(s => !s)}>
+                {showThread ? 'Hide' : '💬 Open chat'}
+              </button>
+            </div>
+            {showThread && (
+              <div style={{ marginTop: '12px' }}>
+                <ConversationThread
+                  conversation={findConv(currentUser.id)}
+                  peerName={requesterLabel}
+                  send={(body) => sendMessage({ requestId: r.id, surveyorId: currentUser.id, requesterId: r.councilId, body })}
+                />
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Requester: review quotes + award + lifecycle */}
         {(isRequester || isAdmin) && r.quotes.length > 0 && (
           <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid var(--border)' }}>
@@ -108,11 +135,28 @@ export default function RequestDetailModal({ request: r, onClose }) {
                         {surveyor?.rics && <span>RICS {surveyor.rics}</span>}
                       </div>
                       <p style={{ fontSize: '13px', color: 'var(--text-light)', marginTop: '8px' }}>{q.scope_notes}</p>
-                      {r.status === 'open' && q.status === 'submitted' && isRequester && (
-                        <button className="btn btn-primary btn-sm" style={{ marginTop: '10px' }}
-                          onClick={() => { awardQuote(q); onClose() }}>
-                          Award to this surveyor
-                        </button>
+                      <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
+                        {r.status === 'open' && q.status === 'submitted' && isRequester && (
+                          <button className="btn btn-primary btn-sm"
+                            onClick={() => { awardQuote(q); onClose() }}>
+                            Award to this surveyor
+                          </button>
+                        )}
+                        {isRequester && (
+                          <button className="btn btn-outline btn-sm"
+                            onClick={() => setMsgSurveyorId(id => id === q.surveyor_id ? null : q.surveyor_id)}>
+                            {msgSurveyorId === q.surveyor_id ? 'Hide chat' : '💬 Message'}
+                          </button>
+                        )}
+                      </div>
+                      {isRequester && msgSurveyorId === q.surveyor_id && (
+                        <div style={{ marginTop: '12px' }}>
+                          <ConversationThread
+                            conversation={findConv(q.surveyor_id)}
+                            peerName={surveyor?.name || 'surveyor'}
+                            send={(body) => sendMessage({ requestId: r.id, surveyorId: q.surveyor_id, requesterId: currentUser.id, body })}
+                          />
+                        </div>
                       )}
                     </div>
                   </div>

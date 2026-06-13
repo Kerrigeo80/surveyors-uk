@@ -1,11 +1,12 @@
-import { useState } from 'react'
-import { Navigate, useNavigate } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { Navigate, useNavigate, useLocation } from 'react-router-dom'
 import { useApp } from '../lib/AppContext.jsx'
-import { UK_REGIONS, QUALIFICATION_TYPES, PROPERTY_TYPES, getInitials, formatDateGB, qualLabel } from '../lib/data.js'
+import { UK_REGIONS, QUALIFICATION_TYPES, PROPERTY_TYPES, getInitials, formatDateGB, qualLabel, totalUnreadMessages } from '../lib/data.js'
 import RequestCard from '../components/RequestCard.jsx'
 import RequestDetailModal from '../components/RequestDetailModal.jsx'
 import UploadQualificationModal from '../components/UploadQualificationModal.jsx'
 import DocumentLink from '../components/DocumentLink.jsx'
+import Messages from '../components/Messages.jsx'
 import { RatingDisplay } from '../components/RatingStars.jsx'
 import ChangePassword from '../components/ChangePassword.jsx'
 
@@ -14,13 +15,22 @@ const TABS = [
   { id: 'qualifications', label: '📄 My Qualifications' },
   { id: 'requests', label: '📋 Available Requests' },
   { id: 'my-interests', label: '⭐ My Quotes' },
+  { id: 'messages', label: '💬 Messages' },
   { id: 'profile', label: '⚙️ Edit Profile' },
 ]
 
 export default function SurveyorDashboard() {
-  const { currentUser, requests, logout } = useApp()
+  const { currentUser, requests, conversations, logout } = useApp()
   const navigate = useNavigate()
-  const [tab, setTab] = useState('overview')
+  const location = useLocation()
+  const [tab, setTab] = useState(() => new URLSearchParams(window.location.search).get('tab') || 'overview')
+  const unreadMessages = totalUnreadMessages(conversations, currentUser?.id)
+
+  // Follow ?tab= changes (e.g. clicking a message notification while already here).
+  useEffect(() => {
+    const t = new URLSearchParams(location.search).get('tab')
+    if (t) setTab(t)
+  }, [location.search])
   const [detailReq, setDetailReq] = useState(null)
   const [uploadOpen, setUploadOpen] = useState(false)
 
@@ -51,6 +61,9 @@ export default function SurveyorDashboard() {
               {TABS.map(t => (
                 <a key={t.id} className={tab === t.id ? 'active' : ''} onClick={() => setTab(t.id)}>
                   {t.label}
+                  {t.id === 'messages' && unreadMessages > 0 && (
+                    <span className="badge" style={{ marginLeft: '6px', background: 'var(--accent)', color: 'var(--primary)' }}>{unreadMessages}</span>
+                  )}
                 </a>
               ))}
               <a onClick={() => { logout(); navigate('/') }} style={{ color: 'var(--danger)' }}>🚪 Sign Out</a>
@@ -83,6 +96,7 @@ export default function SurveyorDashboard() {
           {tab === 'qualifications' && <QualificationsTab user={currentUser} onUpload={() => setUploadOpen(true)} />}
           {tab === 'requests' && <RequestsTab onView={setDetailReq} />}
           {tab === 'my-interests' && <MyInterestsTab myInterests={myInterests} onView={setDetailReq} />}
+          {tab === 'messages' && <Messages />}
           {tab === 'profile' && <ProfileTab />}
         </div>
       </div>

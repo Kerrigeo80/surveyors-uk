@@ -1,8 +1,9 @@
-import { useState } from 'react'
-import { Navigate, useNavigate } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { Navigate, useNavigate, useLocation } from 'react-router-dom'
 import { useApp } from '../lib/AppContext.jsx'
-import { UK_REGIONS, QUALIFICATION_TYPES, LANDLORD_TYPES, PROPERTY_TYPES, getInitials, formatDateGB, qualLabel, propertyTypeLabel, isInsured } from '../lib/data.js'
+import { UK_REGIONS, QUALIFICATION_TYPES, LANDLORD_TYPES, PROPERTY_TYPES, getInitials, formatDateGB, qualLabel, propertyTypeLabel, isInsured, totalUnreadMessages } from '../lib/data.js'
 import RequestDetailModal from '../components/RequestDetailModal.jsx'
+import Messages from '../components/Messages.jsx'
 import { RatingDisplay } from '../components/RatingStars.jsx'
 import ChangePassword from '../components/ChangePassword.jsx'
 
@@ -12,14 +13,22 @@ const TABS = [
   { id: 'create-request', label: '➕ New Request' },
   { id: 'properties', label: '🏠 My Properties' },
   { id: 'surveyors', label: '🔍 Browse Surveyors' },
+  { id: 'messages', label: '💬 Messages' },
   { id: 'profile', label: '⚙️ Edit Profile' },
 ]
 
 export default function LandlordDashboard() {
-  const { currentUser, requests, logout } = useApp()
+  const { currentUser, requests, conversations, logout } = useApp()
   const navigate = useNavigate()
-  const [tab, setTab] = useState('overview')
+  const location = useLocation()
+  const [tab, setTab] = useState(() => new URLSearchParams(window.location.search).get('tab') || 'overview')
   const [detailReq, setDetailReq] = useState(null)
+  const unreadMessages = totalUnreadMessages(conversations, currentUser?.id)
+
+  useEffect(() => {
+    const t = new URLSearchParams(location.search).get('tab')
+    if (t) setTab(t)
+  }, [location.search])
 
   if (!currentUser || currentUser.role !== 'landlord') {
     return <Navigate to="/login" replace />
@@ -48,6 +57,9 @@ export default function LandlordDashboard() {
               {TABS.map(t => (
                 <a key={t.id} className={tab === t.id ? 'active' : ''} onClick={() => setTab(t.id)}>
                   {t.label}
+                  {t.id === 'messages' && unreadMessages > 0 && (
+                    <span className="badge" style={{ marginLeft: '6px', background: 'var(--accent)', color: 'var(--primary)' }}>{unreadMessages}</span>
+                  )}
                 </a>
               ))}
               <a onClick={() => { logout(); navigate('/') }} style={{ color: 'var(--danger)' }}>🚪 Sign Out</a>
@@ -61,6 +73,7 @@ export default function LandlordDashboard() {
           {tab === 'create-request' && <CreateRequestTab landlord={currentUser} onCreated={() => setTab('my-requests')} />}
           {tab === 'properties' && <PropertiesTab />}
           {tab === 'surveyors' && <SurveyorsTab />}
+          {tab === 'messages' && <Messages />}
           {tab === 'profile' && <ProfileTab />}
         </div>
       </div>

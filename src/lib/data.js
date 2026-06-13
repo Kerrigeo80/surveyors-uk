@@ -120,6 +120,16 @@ export function propertyTypeLabel(id) {
   return PROPERTY_TYPES.find(t => t.id === id)?.label || id
 }
 
+// Unread messages in one conversation = messages from the other party not yet read.
+export function unreadInConversation(conv, userId) {
+  return (conv?.messages || []).filter(m => m.sender_id !== userId && !m.read_at).length
+}
+
+// Total unread across all conversations (drives the Messages tab badge).
+export function totalUnreadMessages(conversations, userId) {
+  return (conversations || []).reduce((sum, c) => sum + unreadInConversation(c, userId), 0)
+}
+
 // A surveyor counts as insured only with a verified, non-expired policy.
 export function isInsured(s) {
   if (!s || s.insuranceStatus !== 'verified') return false
