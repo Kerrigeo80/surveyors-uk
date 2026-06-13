@@ -6,6 +6,21 @@ Format: newest entries at the top. Keep entries short. Delete anything stale.
 
 ---
 
+## 2026-06-13 — Claude Code — Pre-launch hardening: password reset, legal pages, security revokes
+
+Knocking off launch must-haves identified in the app review.
+
+- **Password reset** — `requestPasswordReset(email)` in AppContext (`resetPasswordForEmail`, redirect to `/reset-password`). New pages `ForgotPassword.jsx` (`/forgot-password`) and `ResetPassword.jsx` (`/reset-password`, unguarded — listens for the recovery session via `PASSWORD_RECOVERY`/`SIGNED_IN`, then `updateUser`). "Forgot your password?" link added to Login.
+- **Legal + consent** — `Legal.jsx` renders Privacy (`/privacy`) and Terms (`/terms`); both are **draft templates flagged for legal review**, UK-GDPR-aware (controller, lawful basis, rights, LinkedIn-seed-pool erasure, cookies). Required consent checkbox added to Register (blocks submit until ticked). Footer links on Landing.
+- **Security (migration `revoke_execute_on_trigger_functions`)** — revoked EXECUTE from public/anon/authenticated on all 9 trigger fns (notify_on_*, enforce_insurance_status, sync_insurance_policy). Safe: triggers don't require caller EXECUTE. Cleared all 9 advisor lints.
+  - Left intentionally: `match_linkedin_profile`/`claim_linkedin_profile` (registration claim flow), `is_admin`/`is_conversation_participant` (used in RLS — authenticated needs EXECUTE).
+- **Still open (not code):** enable **Leaked Password Protection** (Auth → Providers → Password settings — dashboard toggle); confirm **Resend key** is set so emails (incl. reset) actually send; optional: narrow the public `website` storage bucket SELECT policy; move `pg_net` out of public schema.
+- Consent is gated client-side only — storing a consent timestamp (e.g. `profiles.agreed_terms_at`) is a sensible follow-up for GDPR proof-of-consent.
+
+Verified: `npm run build` clean.
+
+---
+
 ## 2026-06-13 — Claude Code — In-app messaging: COMPLETE ✓
 
 3rd of the sequence (property-type ✓ → insurance ✓ → **messaging ✓** → payment). Backend (DB + AppContext) and UI are both done; tree builds green.

@@ -370,6 +370,18 @@ export function AppProvider({ children }) {
     return true
   }, [showToast])
 
+  // Send a password-reset email. The link returns the user to /reset-password
+  // with a recovery session, where they set a new password.
+  const requestPasswordReset = useCallback(async (email) => {
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    })
+    // Don't reveal whether the address is registered.
+    if (error && error.status !== 422) { showToast(error.message, 'error'); return false }
+    showToast('If that email is registered, a reset link is on its way.', 'success')
+    return true
+  }, [showToast])
+
   // ── Mutations ──
   const updateCurrentUser = useCallback(async (patch) => {
     if (!currentUser) return
@@ -650,7 +662,7 @@ export function AppProvider({ children }) {
 
   const value = useMemo(() => ({
     session, currentUser, users, requests, properties, notifications, conversations, toasts, ready,
-    register, login, demoLogin, logout, changePassword,
+    register, login, demoLogin, logout, changePassword, requestPasswordReset,
     updateCurrentUser, addDocument, createRequest, closeRequest,
     createProperty, deleteProperty,
     submitQuote, withdrawQuote, awardQuote, updateRequestStatus, submitReview,
@@ -661,7 +673,7 @@ export function AppProvider({ children }) {
     refresh,
     showToast,
   }), [session, currentUser, users, requests, properties, notifications, conversations, toasts, ready,
-       register, login, demoLogin, logout, changePassword,
+       register, login, demoLogin, logout, changePassword, requestPasswordReset,
        updateCurrentUser, addDocument, createRequest, closeRequest,
        createProperty, deleteProperty,
        submitQuote, withdrawQuote, awardQuote, updateRequestStatus, submitReview,

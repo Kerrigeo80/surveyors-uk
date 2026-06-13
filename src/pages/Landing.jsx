@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 
 export default function Landing() {
   const navigate = useNavigate()
@@ -47,6 +47,12 @@ export default function Landing() {
           <p>All surveyor qualifications are reviewed and verified. Councils can be confident they're working with properly accredited professionals.</p>
         </div>
       </div>
+
+      <footer style={{ textAlign: 'center', padding: '32px 0 16px', color: 'var(--text-light)', fontSize: '13px', display: 'flex', gap: '16px', justifyContent: 'center', flexWrap: 'wrap' }}>
+        <span>© {new Date().getFullYear()} Surveyors UK</span>
+        <Link to="/privacy">Privacy Policy</Link>
+        <Link to="/terms">Terms of Service</Link>
+      </footer>
     </div>
   )
 }

@@ -38,6 +38,9 @@ export default function Login() {
             Sign In
           </button>
         </form>
+        <div style={{ textAlign: 'center', marginTop: '12px' }}>
+          <Link to="/forgot-password" style={{ fontSize: '13px' }}>Forgot your password?</Link>
+        </div>
         <div className="auth-toggle">
           New here? <Link to="/register">Create an account</Link>
         </div>

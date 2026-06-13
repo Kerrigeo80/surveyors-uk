@@ -20,6 +20,7 @@ export default function Register() {
   const [businessName, setBusinessName] = useState('')
   const [landlordType, setLandlordType] = useState('individual')
   const [address, setAddress] = useState('')
+  const [agreed, setAgreed] = useState(false)
 
   // LinkedIn match-and-claim state (surveyor only)
   const [match, setMatch] = useState(null)        // matched LinkedIn profile or null
@@ -231,7 +232,15 @@ export default function Register() {
             </>
           )}
 
-          <button type="submit" className="btn btn-primary" style={{ width: '100%', justifyContent: 'center' }}>
+          <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', fontSize: '13px', color: 'var(--text-light)', margin: '4px 0 18px' }}>
+            <input type="checkbox" checked={agreed} onChange={e => setAgreed(e.target.checked)} required style={{ marginTop: '3px' }} />
+            <span>
+              I agree to the <Link to="/terms" target="_blank">Terms of Service</Link> and{' '}
+              <Link to="/privacy" target="_blank">Privacy Policy</Link>.
+            </span>
+          </label>
+
+          <button type="submit" className="btn btn-primary" style={{ width: '100%', justifyContent: 'center' }} disabled={!agreed}>
             Create Account
           </button>
         </form>

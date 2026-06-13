@@ -6,6 +6,9 @@ import Toasts from './components/Toasts.jsx'
 import Landing from './pages/Landing.jsx'
 import Register from './pages/Register.jsx'
 import Login from './pages/Login.jsx'
+import ForgotPassword from './pages/ForgotPassword.jsx'
+import ResetPassword from './pages/ResetPassword.jsx'
+import Legal from './pages/Legal.jsx'
 
 // Dashboards are heavy and role-gated — split them out of the initial bundle.
 const SurveyorDashboard = lazy(() => import('./pages/SurveyorDashboard.jsx'))
@@ -48,6 +51,10 @@ export default function App() {
             <Route path="/" element={<RootRoute />} />
             <Route path="/register" element={<PublicOnly><Register /></PublicOnly>} />
             <Route path="/login" element={<PublicOnly><Login /></PublicOnly>} />
+            <Route path="/forgot-password" element={<PublicOnly><ForgotPassword /></PublicOnly>} />
+            <Route path="/reset-password" element={<ResetPassword />} />
+            <Route path="/privacy" element={<Legal doc="privacy" />} />
+            <Route path="/terms" element={<Legal doc="terms" />} />
             <Route path="/surveyor" element={<SurveyorDashboard />} />
             <Route path="/council" element={<CouncilDashboard />} />
             <Route path="/landlord" element={<LandlordDashboard />} />
