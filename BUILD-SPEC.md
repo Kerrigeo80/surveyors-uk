@@ -2,7 +2,7 @@
 
 **Canonical source of truth.** Edit this file in place as decisions are made.
 
-**Last updated:** 2026-06-08
+**Last updated:** 2026-06-13
 **Sister documents:** `HANDOFF.md` (session whiteboard) · `reference/mockup.html` (original visual prototype)
 
 ---
@@ -104,13 +104,35 @@ Build order to be decided with Kerri (see "What's next" below):
 - **2e. LinkedIn seed pool + claim flow** — admin CSV import, claim-on-registration UX
 - **2f. Multi-user org accounts** (housing associations) — defer until 2a–2e land
 
-### Phase 3 — Trust + UX polish (IN PROGRESS)
-Done: ratings/reviews (2026-06-09) · email notifications (2026-06-08, needs Resend key to activate) · property type filtering (2026-06-10) · insurance verification (2026-06-11).
-In progress: in-app messaging — **backend done (DB + AppContext, builds green); UI not built yet**. See HANDOFF "RESUME HERE" for the exact remaining steps.
-Remaining after that: payment + invoicing (needs the pricing tier £ numbers settled first).
+### Phase 3 — Trust + UX polish (DONE 2026-06-13)
+Done: ratings/reviews (2026-06-09) · property-type filtering (2026-06-10) · insurance verification (2026-06-11) · **in-app messaging UI (2026-06-13)** · **pre-launch hardening (2026-06-13)** — password-reset flow, Privacy/Terms pages + required registration consent, DB EXECUTE revokes on trigger functions.
+Email notifications: edge function `send-notification-email` built (2026-06-08) but **not yet live** — needs a verified domain + Resend setup (see "Pre-launch — outstanding" below).
 
 ### Phase 4 — Mobile + scale (PARKED)
 Mobile-first browse for surveyors on the road · push notifications · advanced search · admin analytics.
+
+---
+
+## Pre-launch — outstanding
+
+### A. Email + domain — TODO (blocks reset & notification emails reaching real users)
+Two email paths, **both need a verified sending domain**:
+1. **Auth emails** (password reset, signup confirm) — sent by Supabase Auth, currently on the built-in tester (low rate limit, unbranded, spam-prone). Needs custom SMTP.
+2. **Notification emails** (quote / award / message) — sent by the `send-notification-email` edge function via the Resend API. Falls back to `onboarding@resend.dev` (Resend test domain — only delivers to the Resend account owner) until `EMAIL_FROM` is set to a verified domain.
+
+Steps:
+1. **Register a domain** (e.g. `surveyorsuk.co.uk`). _DECISION PENDING: domain name._
+2. **Resend** → add + verify the domain (SPF / DKIM / MX DNS records at registrar) → create an API key (`re_…`).
+3. **Supabase → Edge Functions → Secrets:** set `RESEND_API_KEY`, `EMAIL_FROM` = `Surveyors UK <noreply@DOMAIN>`, `WEBHOOK_SECRET` (must match whatever triggers the fn — **verify the trigger/webhook wiring**).
+4. **Supabase → Authentication → Emails → SMTP Settings:** enable custom SMTP via Resend (`smtp.resend.com:465`, user `resend`, pass = API key). Set **Site URL** = `https://surveyors-uk.vercel.app`.
+5. **Test** the reset email and a notification email end-to-end.
+
+### B. Other launch items
+- **Enable Leaked Password Protection** — Supabase Auth settings toggle (clears the last security advisor).
+- **Billing / subscriptions** — unbuilt; blocked on the pricing tier £ numbers + Stripe confirmation (model decided 2026-06-08, see Pricing).
+- **Consent timestamp** — store `profiles.agreed_terms_at` for GDPR proof-of-consent (registration consent is UI-gated only right now).
+- **Legal pages are DRAFTS** (`/privacy`, `/terms`) — have counsel review before launch.
+- Optional/low-priority advisors: narrow the public `website` storage bucket SELECT policy; `pg_net` in public schema (leave — tied to the email webhook).
 
 ---
 
@@ -119,6 +141,8 @@ Mobile-first browse for surveyors on the road · push notifications · advanced 
 | Account | Email | Password |
 |---|---|---|
 | Admin (Kerri) | kerri@thetalentnetwork.com.au | _set 2026-06-01, see secure store_ |
+| Admin (Brian) | brian.gaines1@gmail.com | _provisioned 2026-06-13, temp pw in secure store; change on first login_ |
+| Admin (Sarah) | sarahgaines645@gmail.com | _provisioned 2026-06-13, temp pw in secure store; change on first login_ |
 | Demo Surveyor (verified) | james@walkersurveys.co.uk | demo1234 |
 | Demo Surveyor (verified) | sarah@precisionsurveys.co.uk | demo1234 |
 | Demo Surveyor (pending) | david@murrayenv.co.uk | demo1234 |

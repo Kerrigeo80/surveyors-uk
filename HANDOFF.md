@@ -6,6 +6,21 @@ Format: newest entries at the top. Keep entries short. Delete anything stale.
 
 ---
 
+## ⭐ NEXT UP — Email + domain setup (mostly dashboard/registrar work, not code)
+
+Reset emails and notification emails won't reach real users until a sending domain is verified. Full step-by-step is in **`BUILD-SPEC.md` → "Pre-launch — outstanding → A. Email + domain"**. Short version:
+1. Register a domain (name = DECISION PENDING).
+2. Verify it in Resend (DNS records) → get API key.
+3. Supabase Edge Function secrets: `RESEND_API_KEY`, `EMAIL_FROM`, `WEBHOOK_SECRET`.
+4. Supabase Auth → custom SMTP (Resend) + set Site URL.
+5. Enable Leaked Password Protection toggle. Test both email paths.
+
+Claude can help with: verifying the `WEBHOOK_SECRET`/trigger wiring for `send-notification-email`, editing the edge-function `EMAIL_FROM` default or templates, and any code changes. Registrar/Resend/dashboard steps are Kerri's.
+
+Then the last big build is **billing/subscriptions** (blocked on pricing £ numbers + Stripe).
+
+---
+
 ## 2026-06-13 — Claude Code — Pre-launch hardening: password reset, legal pages, security revokes
 
 Knocking off launch must-haves identified in the app review.
