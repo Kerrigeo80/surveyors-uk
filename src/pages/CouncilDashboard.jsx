@@ -1,14 +1,32 @@
 import { useState, useEffect } from 'react'
 import { Navigate, useNavigate, useLocation } from 'react-router-dom'
 import { useApp } from '../lib/AppContext.jsx'
-import { UK_REGIONS, QUALIFICATION_TYPES, PROPERTY_TYPES, getInitials, formatDateGB, qualLabel, propertyTypeLabel, isInsured, totalUnreadMessages } from '../lib/data.js'
+import { UK_REGIONS, QUALIFICATION_TYPES, PROPERTY_TYPES, HAZARD_CATEGORIES, HAZARD_SEVERITIES, getInitials, formatDateGB, qualLabel, hazardCategoryLabel, propertyTypeLabel, toDatetimeLocal, isInsured, totalUnreadMessages } from '../lib/data.js'
 import RequestDetailModal from '../components/RequestDetailModal.jsx'
+import ResidentReports from '../components/ResidentReports.jsx'
 import Messages from '../components/Messages.jsx'
+
+// Map a resident report to create-request form prefill values.
+function reportToPrefill(rep) {
+  return {
+    sourceReportId: rep.id,
+    title: [rep.category ? hazardCategoryLabel(rep.category) : null, rep.address].filter(Boolean).join(' — '),
+    address: rep.address || '',
+    postcode: rep.postcode || '',
+    description: rep.description || '',
+    residentName: rep.resident_name || '',
+    residentContact: rep.resident_contact || '',
+    awaabsApplies: !!rep.category,
+    hazardCategory: rep.category || '',
+    reportedAtLocal: toDatetimeLocal(rep.reported_at),
+  }
+}
 import { RatingDisplay } from '../components/RatingStars.jsx'
 import ChangePassword from '../components/ChangePassword.jsx'
 
 const TABS = [
   { id: 'overview', label: '📊 Overview' },
+  { id: 'reports', label: '🧾 Resident Reports' },
   { id: 'my-requests', label: '📋 My Requests' },
   { id: 'create-request', label: '➕ New Request' },
   { id: 'surveyors', label: '🔍 Browse Surveyors' },
@@ -17,12 +35,15 @@ const TABS = [
 ]
 
 export default function CouncilDashboard() {
-  const { currentUser, requests, conversations, logout } = useApp()
+  const { currentUser, requests, reports, conversations, logout } = useApp()
   const navigate = useNavigate()
   const location = useLocation()
   const [tab, setTab] = useState(() => new URLSearchParams(window.location.search).get('tab') || 'overview')
   const [detailReq, setDetailReq] = useState(null)
+  const [prefill, setPrefill] = useState(null)
   const unreadMessages = totalUnreadMessages(conversations, currentUser?.id)
+  const newReports = (reports || []).filter(r => r.status === 'new').length
+  const goCreate = (pf = null) => { setPrefill(pf); setTab('create-request') }
 
   useEffect(() => {
     const t = new URLSearchParams(location.search).get('tab')
@@ -55,6 +76,9 @@ export default function CouncilDashboard() {
                   {t.id === 'messages' && unreadMessages > 0 && (
                     <span className="badge" style={{ marginLeft: '6px', background: 'var(--accent)', color: 'var(--primary)' }}>{unreadMessages}</span>
                   )}
+                  {t.id === 'reports' && newReports > 0 && (
+                    <span className="badge" style={{ marginLeft: '6px', background: 'var(--accent)', color: 'var(--primary)' }}>{newReports}</span>
+                  )}
                 </a>
               ))}
               <a onClick={() => { logout(); navigate('/') }} style={{ color: 'var(--danger)' }}>🚪 Sign Out</a>
@@ -63,9 +87,10 @@ export default function CouncilDashboard() {
         </div>
 
         <div className="main-content">
-          {tab === 'overview' && <OverviewTab myReqs={myReqs} onView={setDetailReq} onCreate={() => setTab('create-request')} />}
-          {tab === 'my-requests' && <MyRequestsTab myReqs={myReqs} onView={setDetailReq} onCreate={() => setTab('create-request')} />}
-          {tab === 'create-request' && <CreateRequestTab onCreated={() => setTab('my-requests')} />}
+          {tab === 'overview' && <OverviewTab myReqs={myReqs} onView={setDetailReq} onCreate={() => goCreate()} />}
+          {tab === 'reports' && <ResidentReports onCreateJob={(rep) => goCreate(reportToPrefill(rep))} />}
+          {tab === 'my-requests' && <MyRequestsTab myReqs={myReqs} onView={setDetailReq} onCreate={() => goCreate()} />}
+          {tab === 'create-request' && <CreateRequestTab prefill={prefill} onCreated={() => { setPrefill(null); setTab('my-requests') }} />}
           {tab === 'surveyors' && <SurveyorsTab />}
           {tab === 'messages' && <Messages />}
           {tab === 'profile' && <ProfileTab />}
@@ -165,23 +190,25 @@ function MyRequestsTab({ myReqs, onView, onCreate }) {
   )
 }
 
-function CreateRequestTab({ onCreated }) {
+function CreateRequestTab({ prefill, onCreated }) {
   const { currentUser, createRequest } = useApp()
-  const [form, setForm] = useState({
-    title: '', type: '', region: '', address: '', deadline: '', budget: '', description: '', contact: '',
+  const [form, setForm] = useState(() => ({
+    title: prefill?.title || '', type: '', region: '', address: prefill?.address || '', postcode: prefill?.postcode || '',
+    deadline: '', budget: '', description: prefill?.description || '', contact: '',
     propertyType: '',
-  })
+    awaabsApplies: prefill?.awaabsApplies || false, hazardCategory: prefill?.hazardCategory || '', hazardSeverity: '',
+    reportedAt: prefill?.reportedAtLocal || '',
+    residentName: prefill?.residentName || '', residentContact: prefill?.residentContact || '',
+  }))
+  const sourceReportId = prefill?.sourceReportId || null
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }))
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
-    createRequest({
-      id: 'req-' + Date.now(),
-      councilId: currentUser.id,
+    await createRequest({
       ...form,
-      status: 'open',
-      createdAt: new Date().toISOString().split('T')[0],
-      interests: [],
+      sourceReportId,
+      reportedAt: form.awaabsApplies && form.reportedAt ? new Date(form.reportedAt).toISOString() : undefined,
     })
     onCreated()
   }
@@ -189,11 +216,56 @@ function CreateRequestTab({ onCreated }) {
   return (
     <div className="card">
       <h3 style={{ marginBottom: '20px' }}>Create New Survey Request</h3>
+      {sourceReportId && (
+        <div style={{ marginBottom: '16px', padding: '10px 12px', background: 'var(--success-bg)', border: '1px solid var(--success)', borderRadius: '8px', fontSize: '13px' }}>
+          Created from a resident report — details pre-filled. Set the survey type and severity, then publish.
+        </div>
+      )}
       <form onSubmit={handleSubmit}>
         <div className="form-group">
           <label>Request Title</label>
           <input type="text" value={form.title} onChange={set('title')} placeholder="e.g. Boundary Survey — 14 High Street" required />
         </div>
+
+        <div className="form-group" style={{ padding: '12px', background: '#fffaf0', border: '1px solid #feebc8', borderRadius: '8px' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 600 }}>
+            <input type="checkbox" checked={form.awaabsApplies}
+              onChange={e => setForm(f => ({ ...f, awaabsApplies: e.target.checked }))} />
+            ⚠ This is a social housing hazard (Awaab's Law applies)
+          </label>
+          {form.awaabsApplies && (
+            <>
+              <p style={{ fontSize: '12px', color: 'var(--text-light)', margin: '8px 0' }}>
+                Statutory deadlines are tracked automatically from the date reported. The platform tracks
+                and alerts — the landlord remains legally responsible for compliance.
+              </p>
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Hazard Category</label>
+                  <select value={form.hazardCategory} onChange={set('hazardCategory')} required>
+                    <option value="">Select hazard...</option>
+                    {HAZARD_CATEGORIES.map(h => <option key={h.id} value={h.id}>{h.label}{h.phase > 1 ? ` (Phase ${h.phase})` : ''}</option>)}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label>Severity</label>
+                  <select value={form.hazardSeverity} onChange={set('hazardSeverity')} required>
+                    <option value="">Select severity...</option>
+                    {HAZARD_SEVERITIES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="form-group">
+                <label>Date &amp; time reported</label>
+                <input type="datetime-local" value={form.reportedAt} onChange={set('reportedAt')} />
+                <p style={{ fontSize: '12px', color: 'var(--text-light)', marginTop: '4px' }}>
+                  Leave blank to use now. This starts the statutory clock.
+                </p>
+              </div>
+            </>
+          )}
+        </div>
+
         <div className="form-row">
           <div className="form-group">
             <label>Survey Type Required</label>
@@ -217,9 +289,15 @@ function CreateRequestTab({ onCreated }) {
             {PROPERTY_TYPES.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
           </select>
         </div>
-        <div className="form-group">
-          <label>Site Address</label>
-          <input type="text" value={form.address} onChange={set('address')} placeholder="Full site address" required />
+        <div className="form-row">
+          <div className="form-group">
+            <label>Site Address</label>
+            <input type="text" value={form.address} onChange={set('address')} placeholder="Full site address" required />
+          </div>
+          <div className="form-group">
+            <label>Postcode</label>
+            <input type="text" value={form.postcode} onChange={set('postcode')} placeholder="e.g. BN2 1TL" />
+          </div>
         </div>
         <div className="form-row">
           <div className="form-group">
@@ -234,6 +312,16 @@ function CreateRequestTab({ onCreated }) {
         <div className="form-group">
           <label>Description & Requirements</label>
           <textarea rows={5} value={form.description} onChange={set('description')} placeholder="Describe what the survey should cover, any special requirements, access details, etc." required />
+        </div>
+        <div className="form-row">
+          <div className="form-group">
+            <label>Resident Name (optional)</label>
+            <input type="text" value={form.residentName} onChange={set('residentName')} placeholder="Who reported it" />
+          </div>
+          <div className="form-group">
+            <label>Resident Contact (optional)</label>
+            <input type="text" value={form.residentContact} onChange={set('residentContact')} placeholder="Phone or email" />
+          </div>
         </div>
         <div className="form-group">
           <label>Contact Email</label>

@@ -17,6 +17,34 @@ export const LANDLORD_TYPES = [
   { id: 'housing_association', label: 'Housing association' },
 ]
 
+// Awaab's Law hazard categories (HHSRS-aligned), tagged by the rollout phase
+// in which they become enforceable. Phase 1 live now; 2 in 2026; 3 in 2027.
+export const HAZARD_CATEGORIES = [
+  { id: 'damp_mould', label: 'Damp & mould', phase: 1 },
+  { id: 'excess_cold', label: 'Excess cold', phase: 2 },
+  { id: 'excess_heat', label: 'Excess heat', phase: 2 },
+  { id: 'falls', label: 'Falls (stairs, levels, baths)', phase: 2 },
+  { id: 'structural_collapse', label: 'Structural collapse', phase: 2 },
+  { id: 'fire', label: 'Fire', phase: 2 },
+  { id: 'electrical', label: 'Electrical hazards', phase: 2 },
+  { id: 'explosions', label: 'Explosions', phase: 2 },
+  { id: 'hygiene_food_safety', label: 'Hygiene & food safety', phase: 2 },
+  { id: 'other', label: 'Other HHSRS hazard', phase: 3 },
+]
+
+// Severity drives which statutory clock applies (see the DB deadline trigger).
+export const HAZARD_SEVERITIES = [
+  { id: 'emergency', label: 'Emergency', desc: 'Significant & imminent risk — investigate and make safe within 24 hours' },
+  { id: 'significant', label: 'Significant', desc: 'Investigate within 10 working days; written summary within 3; make safe within 5' },
+  { id: 'routine', label: 'Routine', desc: 'Ordinary survey work — no statutory deadline' },
+]
+
+export const AVAILABILITY_OPTIONS = [
+  { id: 'available', label: 'Available' },
+  { id: 'limited', label: 'Limited capacity' },
+  { id: 'unavailable', label: 'Unavailable' },
+]
+
 export const QUALIFICATION_TYPES = [
   { id: 'building', label: 'Building Surveying', desc: 'RICS Building Surveyor' },
   { id: 'quantity', label: 'Quantity Surveying', desc: 'Quantity Surveyor / Cost Consultant' },
@@ -112,6 +140,14 @@ export function formatDateGB(iso, withYear = true) {
   })
 }
 
+// ISO timestamp -> 'YYYY-MM-DDTHH:mm' for a datetime-local input (local time).
+export function toDatetimeLocal(iso) {
+  if (!iso) return ''
+  const d = new Date(iso)
+  const p = (n) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`
+}
+
 export function qualLabel(id) {
   return QUALIFICATION_TYPES.find(q => q.id === id)?.label || id
 }
@@ -135,4 +171,113 @@ export function isInsured(s) {
   if (!s || s.insuranceStatus !== 'verified') return false
   if (!s.insuranceExpiry) return true
   return new Date(s.insuranceExpiry) >= new Date(new Date().toDateString())
+}
+
+export function hazardCategoryLabel(id) {
+  return HAZARD_CATEGORIES.find(h => h.id === id)?.label || id
+}
+
+export function severityLabel(id) {
+  return HAZARD_SEVERITIES.find(s => s.id === id)?.label || id
+}
+
+// 'BN2 1TL' -> 'BN2' (outward code), 'BN' (area). Mirrors the SQL helpers.
+export function postcodeOutward(p) {
+  if (!p) return ''
+  return p.trim().toUpperCase().split(' ')[0]
+}
+export function postcodeArea(p) {
+  return (postcodeOutward(p).match(/^[A-Z]+/) || [''])[0]
+}
+
+// ── Matching: does this open job match this surveyor? ──
+// Mirrors notify_matching_surveyors() in the DB: vetted + available + holds the
+// required skill + covers the area (postcode prefix, or region as fallback).
+export function isMatch(job, surveyor) {
+  if (!job || !surveyor) return false
+  if (surveyor.availabilityStatus === 'unavailable') return false
+  const skill = (surveyor.qualifications || []).includes(job.type)
+  if (!skill) return false
+  const areas = surveyor.coverageAreas || []
+  const out = postcodeOutward(job.postcode)
+  const areaMatch =
+    (job.region && job.region === surveyor.region) ||
+    (out && areas.some(ca => out.startsWith(ca.toUpperCase())))
+  return !!areaMatch
+}
+
+export function matchReasons(job, surveyor) {
+  const reasons = []
+  if ((surveyor.qualifications || []).includes(job.type)) reasons.push(qualLabel(job.type))
+  const out = postcodeOutward(job.postcode)
+  if (out && (surveyor.coverageAreas || []).some(ca => out.startsWith(ca.toUpperCase()))) {
+    reasons.push(`Covers ${out}`)
+  } else if (job.region && job.region === surveyor.region) {
+    reasons.push(job.region)
+  }
+  return reasons
+}
+
+// ── Awaab's Law compliance clock ──
+// Per-milestone status: 'done' | 'breached' | 'due_soon' (<24h) | 'on_track'.
+const DUE_SOON_MS = 24 * 60 * 60 * 1000
+
+function milestoneStatus(dueAt, doneAt, now) {
+  if (doneAt) return 'done'
+  if (!dueAt) return 'on_track'
+  const due = new Date(dueAt).getTime()
+  if (now > due) return 'breached'
+  if (due - now <= DUE_SOON_MS) return 'due_soon'
+  return 'on_track'
+}
+
+// Returns { applies, severity, milestones:[{key,label,dueAt,doneAt,status}], overall }
+// overall is the worst not-done milestone status, or 'done' / null.
+export function awaabsClock(r, now = Date.now()) {
+  if (!r?.awaabsApplies || !r.hazardSeverity || r.hazardSeverity === 'routine') {
+    return { applies: false, severity: null, milestones: [], overall: null }
+  }
+  const defs = [
+    { key: 'investigate', label: 'Investigate', dueAt: r.investigateBy, doneAt: r.investigatedAt },
+    { key: 'summary', label: 'Written summary', dueAt: r.summaryDueBy, doneAt: r.summarySentAt },
+    { key: 'make_safe', label: 'Make safe', dueAt: r.makeSafeBy, doneAt: r.madeSafeAt },
+  ]
+  const milestones = defs.map(d => ({ ...d, status: milestoneStatus(d.dueAt, d.doneAt, now) }))
+  const rank = { breached: 3, due_soon: 2, on_track: 1 }
+  let overall = 'done'
+  for (const m of milestones) {
+    if (m.status === 'done') continue
+    if (overall === 'done') overall = m.status
+    else if (rank[m.status] > rank[overall]) overall = m.status
+  }
+  return { applies: true, severity: r.hazardSeverity, milestones, overall }
+}
+
+// Lower = more urgent. Used to sort matched/job feeds. Breached first, then
+// soonest live statutory deadline, then ordinary deadline.
+export function urgencyRank(r, now = Date.now()) {
+  const clock = awaabsClock(r, now)
+  if (clock.applies) {
+    const live = clock.milestones.filter(m => m.status !== 'done' && m.dueAt)
+    if (clock.overall === 'breached') return -Infinity
+    if (live.length) return Math.min(...live.map(m => new Date(m.dueAt).getTime()))
+  }
+  return r.deadline ? new Date(r.deadline).getTime() : Infinity
+}
+
+// Compact "in 3h" / "2d left" / "overdue 1d" label for a deadline timestamp.
+export function dueLabel(dueAt, now = Date.now()) {
+  if (!dueAt) return ''
+  const diff = new Date(dueAt).getTime() - now
+  const abs = Math.abs(diff)
+  const hrs = Math.round(abs / (60 * 60 * 1000))
+  const txt = hrs < 48 ? `${hrs}h` : `${Math.round(hrs / 24)}d`
+  return diff < 0 ? `overdue ${txt}` : `${txt} left`
+}
+
+export const COMPLIANCE_COLOR = {
+  breached: { background: '#fed7d7', color: '#9b2c2c' },
+  due_soon: { background: '#feebc8', color: '#9c4221' },
+  on_track: { background: '#c6f6d5', color: '#276749' },
+  done: { background: '#e9d8fd', color: '#553c9a' },
 }

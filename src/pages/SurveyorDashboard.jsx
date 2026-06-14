@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Navigate, useNavigate, useLocation } from 'react-router-dom'
 import { useApp } from '../lib/AppContext.jsx'
-import { UK_REGIONS, QUALIFICATION_TYPES, PROPERTY_TYPES, getInitials, formatDateGB, qualLabel, totalUnreadMessages } from '../lib/data.js'
+import { UK_REGIONS, QUALIFICATION_TYPES, PROPERTY_TYPES, AVAILABILITY_OPTIONS, getInitials, formatDateGB, qualLabel, totalUnreadMessages, isMatch, urgencyRank } from '../lib/data.js'
 import RequestCard from '../components/RequestCard.jsx'
 import RequestDetailModal from '../components/RequestDetailModal.jsx'
 import UploadQualificationModal from '../components/UploadQualificationModal.jsx'
@@ -38,12 +38,10 @@ export default function SurveyorDashboard() {
     return <Navigate to="/login" replace />
   }
 
-  const matching = requests.filter(r => {
-    if (r.status !== 'open') return false
-    const regionMatch = !currentUser.region || r.region === currentUser.region
-    const qualMatch = !currentUser.qualifications?.length || currentUser.qualifications.includes(r.type)
-    return regionMatch || qualMatch
-  })
+  // Jobs matched to this surveyor (skill + area + available), most urgent first.
+  const matching = requests
+    .filter(r => r.status === 'open' && isMatch(r, currentUser))
+    .sort((a, b) => urgencyRank(a) - urgencyRank(b))
   const myInterests = requests.filter(r => r.interests.includes(currentUser.id))
 
   return (
@@ -281,23 +279,36 @@ function QualificationsTab({ user, onUpload }) {
 }
 
 function RequestsTab({ onView }) {
-  const { requests } = useApp()
+  const { requests, currentUser } = useApp()
   const [search, setSearch] = useState('')
   const [qualFilter, setQualFilter] = useState('')
   const [regionFilter, setRegionFilter] = useState('')
   const [propTypeFilter, setPropTypeFilter] = useState('')
+  const [matchedOnly, setMatchedOnly] = useState(true)
 
   let filtered = requests.filter(r => r.status === 'open')
+  if (matchedOnly) filtered = filtered.filter(r => isMatch(r, currentUser))
   if (search) filtered = filtered.filter(r => r.title.toLowerCase().includes(search.toLowerCase()) || r.description.toLowerCase().includes(search.toLowerCase()))
   if (qualFilter) filtered = filtered.filter(r => r.type === qualFilter)
   if (regionFilter) filtered = filtered.filter(r => r.region === regionFilter)
   if (propTypeFilter) filtered = filtered.filter(r => r.propertyType === propTypeFilter)
+  filtered = filtered.slice().sort((a, b) => urgencyRank(a) - urgencyRank(b))
 
   return (
     <div className="card">
       <div className="card-header">
-        <span className="card-title">Available Survey Requests</span>
+        <span className="card-title">{matchedOnly ? 'Jobs Matched to You' : 'All Open Requests'}</span>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer' }}>
+          <input type="checkbox" checked={matchedOnly} onChange={e => setMatchedOnly(e.target.checked)} />
+          Matched to me only
+        </label>
       </div>
+      {matchedOnly && (
+        <p style={{ fontSize: '12px', color: 'var(--text-light)', margin: '0 0 12px' }}>
+          Open jobs in your coverage area for the survey types you offer, most urgent first.
+          Update your coverage and availability under Edit Profile.
+        </p>
+      )}
       <div className="filter-bar">
         <input type="text" placeholder="Search requests..." value={search} onChange={e => setSearch(e.target.value)} />
         <select value={qualFilter} onChange={e => setQualFilter(e.target.value)}>
@@ -316,8 +327,8 @@ function RequestsTab({ onView }) {
       {filtered.length === 0 ? (
         <div className="empty-state">
           <div className="empty-icon">🔍</div>
-          <h3>No requests found</h3>
-          <p>Try adjusting your filters.</p>
+          <h3>No matching jobs right now</h3>
+          <p>{matchedOnly ? 'Try unticking “Matched to me only”, or widen your coverage areas in Edit Profile.' : 'Try adjusting your filters.'}</p>
         </div>
       ) : (
         filtered.map(r => <RequestCard key={r.id} request={r} onView={onView} />)
@@ -354,13 +365,23 @@ function ProfileTab() {
   const [bio, setBio] = useState(currentUser.bio || '')
   const [quals, setQuals] = useState(currentUser.qualifications || [])
   const [propTypes, setPropTypes] = useState(currentUser.propertyTypes || [])
+  const [coverage, setCoverage] = useState((currentUser.coverageAreas || []).join(', '))
+  const [availability, setAvailability] = useState(currentUser.availabilityStatus || 'available')
+  const [availableFrom, setAvailableFrom] = useState(currentUser.availableFrom || '')
+  const [acceptsEmergency, setAcceptsEmergency] = useState(!!currentUser.acceptsEmergency)
 
   const toggleQual = (id) => setQuals(qs => qs.includes(id) ? qs.filter(q => q !== id) : [...qs, id])
   const togglePropType = (id) => setPropTypes(ps => ps.includes(id) ? ps.filter(p => p !== id) : [...ps, id])
 
   const handleSubmit = (e) => {
     e.preventDefault()
-    updateCurrentUser({ name, phone, rics, region, bio, qualifications: quals, propertyTypes: propTypes })
+    const coverageAreas = coverage.split(',').map(s => s.trim().toUpperCase()).filter(Boolean)
+    updateCurrentUser({
+      name, phone, rics, region, bio, qualifications: quals, propertyTypes: propTypes,
+      coverageAreas, availabilityStatus: availability,
+      availableFrom: availability === 'available' ? null : (availableFrom || null),
+      acceptsEmergency,
+    })
     showToast('Profile updated', 'success')
   }
 
@@ -411,6 +432,34 @@ function ProfileTab() {
               </label>
             ))}
           </div>
+        </div>
+        <div className="form-group" style={{ paddingTop: '8px', borderTop: '1px solid var(--border)' }}>
+          <label>Coverage Areas (postcode prefixes)</label>
+          <input type="text" value={coverage} onChange={e => setCoverage(e.target.value)}
+            placeholder="e.g. BN, SE1, E14 — comma separated" />
+          <p style={{ fontSize: '12px', color: 'var(--text-light)', marginTop: '4px' }}>
+            Jobs whose postcode starts with any of these are matched to you (in addition to your service region).
+          </p>
+        </div>
+        <div className="form-row">
+          <div className="form-group">
+            <label>Availability</label>
+            <select value={availability} onChange={e => setAvailability(e.target.value)}>
+              {AVAILABILITY_OPTIONS.map(a => <option key={a.id} value={a.id}>{a.label}</option>)}
+            </select>
+          </div>
+          {availability !== 'available' && (
+            <div className="form-group">
+              <label>Available from</label>
+              <input type="date" value={availableFrom || ''} onChange={e => setAvailableFrom(e.target.value)} />
+            </div>
+          )}
+        </div>
+        <div className="form-group">
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+            <input type="checkbox" checked={acceptsEmergency} onChange={e => setAcceptsEmergency(e.target.checked)} />
+            I can take on emergency (24-hour) Awaab's Law jobs
+          </label>
         </div>
         <div className="form-group">
           <label>Bio / Experience Summary</label>

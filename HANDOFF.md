@@ -9,7 +9,7 @@ Format: newest entries at the top. Keep entries short. Delete anything stale.
 ## ⭐ NEXT UP — Email + domain setup (mostly dashboard/registrar work, not code)
 
 Reset emails and notification emails won't reach real users until a sending domain is verified. Full step-by-step is in **`BUILD-SPEC.md` → "Pre-launch — outstanding → A. Email + domain"**. Short version:
-1. Register a domain (name = DECISION PENDING).
+1. Register a domain — name UNDER REVIEW (leading candidate: **Surveyloop**; Kerri gathering industry feedback before committing). `surveyloop.co.uk`/`.uk` looked available on Crazy Domains. Don't register until Kerri confirms.
 2. Verify it in Resend (DNS records) → get API key.
 3. Supabase Edge Function secrets: `RESEND_API_KEY`, `EMAIL_FROM`, `WEBHOOK_SECRET`.
 4. Supabase Auth → custom SMTP (Resend) + set Site URL.
@@ -18,6 +18,50 @@ Reset emails and notification emails won't reach real users until a sending doma
 Claude can help with: verifying the `WEBHOOK_SECRET`/trigger wiring for `send-notification-email`, editing the edge-function `EMAIL_FROM` default or templates, and any code changes. Registrar/Resend/dashboard steps are Kerri's.
 
 Then the last big build is **billing/subscriptions** (blocked on pricing £ numbers + Stripe).
+
+---
+
+## 2026-06-15 — Claude Code — Resident intake (per-org link → staff triage)
+
+Residents report issues directly via a per-org public link; reports land in the org's queue to triage into a job. `npm run build` clean. Approach chosen 2026-06-14 (per-org link, staff triage — not full resident accounts).
+
+- **Migration `add_resident_hazard_reports`:** `hazard_reports` table (org_id, resident_name/contact, address, postcode, category, description, status new|triaged|dismissed, request_id, reported_at). RLS: org-owner/admin select+update only. Anon submit via SECURITY DEFINER `submit_hazard_report(...)` (validates org, inserts, notifies org). `org_public_name(org_id)` for the public page header. `survey_requests` + `resident_name`, `resident_contact`, `source_report_id`. Verified: valid org inserts+notifies, bad org rejected.
+- **Public page** `src/pages/ResidentReport.jsx` at `/report/:orgId` (no login, eager-loaded). Calls the two RPCs directly via supabase.
+- **AppContext:** loads `reports` (RLS-scoped); `createRequest` now returns the new id, accepts resident fields + `sourceReportId` (auto-marks the report triaged + links it); `dismissReport`.
+- **Dashboards (council + landlord):** new "🧾 Resident Reports" tab (shared `components/ResidentReports.jsx`) — shows the shareable intake link (copy button), new-reports queue with **Create job** (prefills the create form incl. reported-at = resident's report time, so the clock starts correctly) + **Dismiss**, and a handled list. Tab shows a count badge of new reports. Create form gained resident name/contact fields + a "created from report" banner.
+
+### Clock-start note
+Triaging a report sets the job's `reported_at` to the **resident's** submission time (not triage time) — accurate Awaab's Law clock start.
+
+---
+
+## 2026-06-14 — Claude Code — Awaab's Law hazard clock + matching/availability layer
+
+Pivot toward the real product: a compliance-driven matching service for social-housing hazards. Two migrations applied + verified, frontend wired, `npm run build` clean, advisors clean.
+
+### Brian Gaines login fix (start of session)
+- Brian + Sarah couldn't log in: rows were hand-inserted into `auth.users` with NULL token columns → GoTrue 500 on /token AND /recover. Fixed (set tokens to ''). Added `public.seed_auth_user(email,password,metadata)` helper (migration `add_seed_auth_user_helper`) — use it for future seeding, never raw inserts. Brian to confirm login works.
+
+### Awaab's Law hazard model + statutory clock (migration `add_awaabs_law_hazard_clock`)
+- `survey_requests` now hazard-aware: `awaabs_applies`, `hazard_category`, `hazard_severity` (enum emergency|significant|routine), `reported_at`, milestone stamps (`investigated_at`/`summary_sent_at`/`made_safe_at`), trigger-computed deadlines (`investigate_by`/`summary_due_by`/`make_safe_by`).
+- `uk_bank_holidays` table (England & Wales 2025–27) + `add_working_days()` for working-day math. `compute_awaabs_deadlines()` BEFORE trigger: emergency = +24h; significant = 10 working days investigate, 3 to summary, 5 to make-safe (summary/make-safe provisional off investigate-by until investigated). Verified against hand-calc incl. Christmas cluster.
+
+### Matching + availability (migration `add_surveyor_availability_and_matching`)
+- `surveyors`: `coverage_areas text[]` (postcode prefixes), `availability_status` (available|limited|unavailable), `available_from`, `accepts_emergency`. `survey_requests.postcode`.
+- `notify_matching_surveyors()` AFTER INSERT trigger: notifies active + available surveyors whose skill (qualifications) + area (postcode prefix or region fallback) match a new open job. Verified: building job in Greater London notified James Walker only (not wrong-skill/region or pending surveyors). Fires existing email pipeline too.
+- Postcode helpers `postcode_outward`/`postcode_area` (search_path pinned).
+
+### Frontend
+- `data.js`: HAZARD_CATEGORIES/SEVERITIES, AVAILABILITY_OPTIONS, `isMatch`/`matchReasons`, `awaabsClock` (per-milestone on_track/due_soon/breached/done + overall), `urgencyRank`, `dueLabel`, `COMPLIANCE_COLOR`.
+- AppContext: maps all new fields; `createRequest` sends hazard+postcode; `updateCurrentUser` saves coverage/availability; new `setAwaabsMilestone(reqId, 'investigated'|'summary_sent'|'made_safe')`.
+- SurveyorDashboard: matched feed (skill+area+available, urgency-sorted) with "Matched to me only" toggle; availability + coverage-areas + accepts-emergency controls in Edit Profile.
+- Create-request forms (council + landlord): Awaab's Law toggle (category/severity/reported-at) + postcode (landlord auto-fills postcode from property).
+- RequestCard: colour-coded Awaab's badge w/ soonest deadline. RequestDetailModal: full compliance section (3 milestones, due dates, status, requester/admin "Mark done").
+
+### NEXT UP (agreed direction)
+- **Resident intake** — per-org public intake link, staff triage into a live job (decided this session; resident dimension/fields on the job still to add).
+- Then: compliance **dashboard panel** for requesters (at-risk/breached counts), **contractor stage** (remediation works after surveyor report), HA **multi-user** accounts.
+- Frontend changes are in the working tree — push `main` to deploy to Vercel.
 
 ---
 

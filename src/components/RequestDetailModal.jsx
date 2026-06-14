@@ -1,12 +1,12 @@
 import { useState } from 'react'
 import { useApp } from '../lib/AppContext.jsx'
-import { formatDateGB, qualLabel, getInitials, propertyTypeLabel, isInsured } from '../lib/data.js'
+import { formatDateGB, qualLabel, getInitials, propertyTypeLabel, isInsured, awaabsClock, dueLabel, severityLabel, hazardCategoryLabel, COMPLIANCE_COLOR } from '../lib/data.js'
 import SubmitQuoteModal from './SubmitQuoteModal.jsx'
 import ConversationThread from './ConversationThread.jsx'
 import { RatingDisplay, RatingInput } from './RatingStars.jsx'
 
 export default function RequestDetailModal({ request: r, onClose }) {
-  const { users, currentUser, conversations, sendMessage, awardQuote, withdrawQuote, updateRequestStatus } = useApp()
+  const { users, currentUser, conversations, sendMessage, awardQuote, withdrawQuote, updateRequestStatus, setAwaabsMilestone } = useApp()
   const [showSubmit, setShowSubmit] = useState(false)
   const [showThread, setShowThread] = useState(false)     // surveyor ↔ requester
   const [msgSurveyorId, setMsgSurveyorId] = useState(null) // requester → which surveyor
@@ -42,6 +42,8 @@ export default function RequestDetailModal({ request: r, onClose }) {
           <Field label="Deadline" value={deadlineStr} />
           <Field label="Budget" value={r.budget || 'Not specified'} />
         </div>
+
+        <ComplianceSection r={r} canEdit={isRequester || isAdmin} setAwaabsMilestone={setAwaabsMilestone} />
 
         <Section label="Description">
           <p style={{ marginTop: '4px', lineHeight: 1.6, fontSize: '14px' }}>{r.description}</p>
@@ -258,6 +260,43 @@ function ReviewSection({ request, surveyorName, canReview, existing, onDone }) {
         onClick={handleSubmit}>
         {saving ? 'Submitting…' : 'Submit Review'}
       </button>
+    </div>
+  )
+}
+
+function ComplianceSection({ r, canEdit, setAwaabsMilestone }) {
+  const clock = awaabsClock(r)
+  if (!clock.applies) return null
+  const action = { investigate: 'investigated', summary: 'summary_sent', make_safe: 'made_safe' }
+  const fmt = (ts) => new Date(ts).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+  return (
+    <div style={{ marginBottom: '16px', padding: '14px', border: '1px solid #feebc8', background: '#fffaf0', borderRadius: 'var(--radius)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <strong style={{ fontSize: '13px' }}>⚠ Awaab's Law compliance</strong>
+        <span className="badge" style={COMPLIANCE_COLOR[clock.overall] || {}}>
+          {clock.overall === 'done' ? 'compliant' : (clock.overall || '').replace('_', ' ')}
+        </span>
+      </div>
+      <div style={{ fontSize: '12px', color: 'var(--text-light)', margin: '6px 0 4px' }}>
+        {hazardCategoryLabel(r.hazardCategory)} · {severityLabel(r.hazardSeverity)}
+        {r.reportedAt && <> · reported {fmt(r.reportedAt)}</>}
+      </div>
+      {clock.milestones.map(m => (
+        <div key={m.key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderTop: '1px solid var(--border)' }}>
+          <div>
+            <div style={{ fontSize: '13px', fontWeight: 600 }}>{m.label}</div>
+            <div style={{ fontSize: '12px', color: 'var(--text-light)' }}>
+              {m.doneAt ? `Done ${fmt(m.doneAt)}` : (m.dueAt ? `Due ${fmt(m.dueAt)} · ${dueLabel(m.dueAt)}` : '—')}
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span className="badge" style={COMPLIANCE_COLOR[m.status] || {}}>{m.status === 'done' ? '✓ done' : m.status.replace('_', ' ')}</span>
+            {canEdit && !m.doneAt && (
+              <button className="btn btn-outline btn-sm" onClick={() => setAwaabsMilestone(r.id, action[m.key])}>Mark done</button>
+            )}
+          </div>
+        </div>
+      ))}
     </div>
   )
 }

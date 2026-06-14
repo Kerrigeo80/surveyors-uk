@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useApp } from '../lib/AppContext.jsx'
-import { formatDateGB, qualLabel, propertyTypeLabel } from '../lib/data.js'
+import { formatDateGB, qualLabel, propertyTypeLabel, awaabsClock, dueLabel, COMPLIANCE_COLOR } from '../lib/data.js'
 import SubmitQuoteModal from './SubmitQuoteModal.jsx'
 
 const STATUS_LABEL = {
@@ -54,6 +54,20 @@ export default function RequestCard({ request: r, compact, onView, showQuoteActi
           {r.propertyType && <span>🏠 {propertyTypeLabel(r.propertyType)}</span>}
           <span className="badge badge-qual">{qualLabel(r.type)}</span>
         </div>
+        {r.awaabsApplies && (() => {
+          const clock = awaabsClock(r)
+          if (!clock.applies) return null
+          const next = clock.milestones
+            .filter(m => m.status !== 'done' && m.dueAt)
+            .sort((a, b) => new Date(a.dueAt) - new Date(b.dueAt))[0]
+          return (
+            <div style={{ margin: '6px 0' }}>
+              <span className="badge" style={COMPLIANCE_COLOR[clock.overall] || COMPLIANCE_COLOR.on_track}>
+                ⚠ Awaab's Law{next ? ` · ${next.label} ${dueLabel(next.dueAt)}` : ' · Compliant'}
+              </span>
+            </div>
+          )
+        })()}
         {!compact && (
           <div className="request-desc">
             {r.description.length > 200 ? r.description.substring(0, 200) + '...' : r.description}

@@ -59,11 +59,18 @@ Future: **housing association** as a multi-user variant of `landlord` — a sing
 ```
 profiles                — auth.users mirror; role + status
 surveyors               — RICS, region, phone, bio, qualifications[]
+                          + coverage_areas[] (postcode prefixes), availability_status,
+                            available_from, accepts_emergency  ← matching/availability
 councils                — council_name, department, region, phone, about
-survey_requests         — title, type, region, address, deadline, budget, description, status
-request_interests       — surveyor_id × request_id  (will evolve into quotes)
+survey_requests         — title, type, region, address, postcode, deadline, budget, description, status
+                          + Awaab's Law: awaabs_applies, hazard_category, hazard_severity,
+                            reported_at, investigated_at/summary_sent_at/made_safe_at,
+                            investigate_by/summary_due_by/make_safe_by (trigger-computed)
 credential_documents    — uploads with verification status
+uk_bank_holidays        — England & Wales dates; backs add_working_days() for the statutory clock
 ```
+
+**Awaab's Law (added 2026-06-14).** Jobs can be flagged as social-housing hazards; `compute_awaabs_deadlines()` sets statutory deadlines (emergency 24h; significant 10/3/5 working days). `notify_matching_surveyors()` alerts active, available, in-area surveyors with the right skill when a job is posted. Frontend: hazard fields on create forms, compliance clock on cards/detail, surveyor matched-feed + availability settings. Seed users via `seed_auth_user()` — never raw `auth.users` inserts.
 
 RLS in place. `is_admin()` and `handle_new_user()` SECURITY DEFINER, EXECUTE revoked from anon. Trigger creates profile + role-row on signup from auth user metadata. Demo data seeded.
 
@@ -121,7 +128,7 @@ Two email paths, **both need a verified sending domain**:
 2. **Notification emails** (quote / award / message) — sent by the `send-notification-email` edge function via the Resend API. Falls back to `onboarding@resend.dev` (Resend test domain — only delivers to the Resend account owner) until `EMAIL_FROM` is set to a verified domain.
 
 Steps:
-1. **Register a domain** (e.g. `surveyorsuk.co.uk`). _DECISION PENDING: domain name._
+1. **Register a domain.** _DECISION PENDING — name under review._ Leading candidate (2026-06-14): **Surveyloop** (`surveyloop.co.uk` + `surveyloop.uk` looked available on Crazy Domains; no existing UK surveying firm by that name; `.com`/`.io` held by an unrelated survey-software product). Kerri is gathering feedback from industry contacts before committing — do not register until confirmed.
 2. **Resend** → add + verify the domain (SPF / DKIM / MX DNS records at registrar) → create an API key (`re_…`).
 3. **Supabase → Edge Functions → Secrets:** set `RESEND_API_KEY`, `EMAIL_FROM` = `Surveyors UK <noreply@DOMAIN>`, `WEBHOOK_SECRET` (must match whatever triggers the fn — **verify the trigger/webhook wiring**).
 4. **Supabase → Authentication → Emails → SMTP Settings:** enable custom SMTP via Resend (`smtp.resend.com:465`, user `resend`, pass = API key). Set **Site URL** = `https://surveyors-uk.vercel.app`.
@@ -148,6 +155,14 @@ Steps:
 | Demo Surveyor (pending) | david@murrayenv.co.uk | demo1234 |
 | Demo Council | emily@brighton.gov.uk | demo1234 |
 | Demo Council | mark@camden.gov.uk | demo1234 |
+
+**Seeding new accounts:** never hand-write `INSERT INTO auth.users` — leaving the
+token columns NULL makes GoTrue return 500 on login *and* password reset (this
+broke Brian's login on 2026-06-13; fixed 2026-06-14). Use the
+`public.seed_auth_user(email, password, metadata)` helper
+(`supabase/migrations/20260614000000_add_seed_auth_user_helper.sql`), which sets
+all token columns to `''` and bcrypt-hashes the password. Pass `role`/`name` in
+the metadata so the `handle_new_user()` trigger builds the profile + role row.
 
 ---
 

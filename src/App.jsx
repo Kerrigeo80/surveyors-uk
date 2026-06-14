@@ -8,6 +8,7 @@ import Register from './pages/Register.jsx'
 import Login from './pages/Login.jsx'
 import ForgotPassword from './pages/ForgotPassword.jsx'
 import ResetPassword from './pages/ResetPassword.jsx'
+import ResidentReport from './pages/ResidentReport.jsx'
 import Legal from './pages/Legal.jsx'
 
 // Dashboards are heavy and role-gated — split them out of the initial bundle.
@@ -53,6 +54,7 @@ export default function App() {
             <Route path="/login" element={<PublicOnly><Login /></PublicOnly>} />
             <Route path="/forgot-password" element={<PublicOnly><ForgotPassword /></PublicOnly>} />
             <Route path="/reset-password" element={<ResetPassword />} />
+            <Route path="/report/:orgId" element={<ResidentReport />} />
             <Route path="/privacy" element={<Legal doc="privacy" />} />
             <Route path="/terms" element={<Legal doc="terms" />} />
             <Route path="/surveyor" element={<SurveyorDashboard />} />

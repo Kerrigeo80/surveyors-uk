@@ -22,6 +22,10 @@ function flattenProfile(profile, surveyor, council, landlord) {
       bio: surveyor.bio || '',
       qualifications: surveyor.qualifications || [],
       propertyTypes: surveyor.property_types || [],
+      coverageAreas: surveyor.coverage_areas || [],
+      availabilityStatus: surveyor.availability_status || 'available',
+      availableFrom: surveyor.available_from || null,
+      acceptsEmergency: surveyor.accepts_emergency || false,
       insuranceStatus: surveyor.insurance_status || 'none',
       insuranceExpiry: surveyor.insurance_expiry || null,
       insuranceCoverage: surveyor.insurance_coverage || null,
@@ -66,6 +70,10 @@ function buildUsersList(profiles, surveyors, councils, landlords, documentsBySur
         phone: s?.phone || '', bio: s?.bio || '',
         qualifications: s?.qualifications || [],
         propertyTypes: s?.property_types || [],
+        coverageAreas: s?.coverage_areas || [],
+        availabilityStatus: s?.availability_status || 'available',
+        availableFrom: s?.available_from || null,
+        acceptsEmergency: s?.accepts_emergency || false,
         insuranceStatus: s?.insurance_status || 'none',
         insuranceExpiry: s?.insurance_expiry || null,
         insuranceCoverage: s?.insurance_coverage || null,
@@ -116,6 +124,21 @@ function mapRequest(r, quotesByRequest, currentUserId, reviewsByRequest) {
     createdAt: r.created_at,
     awardedQuoteId: r.awarded_quote_id,
     propertyType: r.property_type,
+    postcode: r.postcode,
+    // Awaab's Law hazard + statutory clock
+    awaabsApplies: r.awaabs_applies,
+    hazardCategory: r.hazard_category,
+    hazardSeverity: r.hazard_severity,
+    reportedAt: r.reported_at,
+    investigatedAt: r.investigated_at,
+    summarySentAt: r.summary_sent_at,
+    madeSafeAt: r.made_safe_at,
+    investigateBy: r.investigate_by,
+    summaryDueBy: r.summary_due_by,
+    makeSafeBy: r.make_safe_by,
+    residentName: r.resident_name,
+    residentContact: r.resident_contact,
+    sourceReportId: r.source_report_id,
     quotes,
     myQuote,
     // The review left on this completed job, if any (one review per request)
@@ -130,6 +153,7 @@ export function AppProvider({ children }) {
   const [currentUser, setCurrentUser] = useState(null)
   const [users, setUsers] = useState([])
   const [requests, setRequests] = useState([])
+  const [reports, setReports] = useState([])
   const [properties, setProperties] = useState([])
   const [notifications, setNotifications] = useState([])
   const [conversations, setConversations] = useState([])
@@ -146,7 +170,7 @@ export function AppProvider({ children }) {
   // ── Load everything the current session can see ──
   const loadAll = useCallback(async (userId) => {
     if (!userId) {
-      setCurrentUser(null); setUsers([]); setRequests([])
+      setCurrentUser(null); setUsers([]); setRequests([]); setReports([])
       setNotifications([]); setConversations([])
       return
     }
@@ -171,7 +195,7 @@ export function AppProvider({ children }) {
     ])
     const [
       { data: propertiesData }, { data: notificationsData }, { data: reviews },
-      { data: myInsurance }, { data: convs }, { data: msgs },
+      { data: myInsurance }, { data: convs }, { data: msgs }, { data: reportsData },
     ] = await Promise.all([
       supabase.from('properties').select('*').order('created_at', { ascending: false }),
       supabase.from('notifications').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(50),
@@ -179,6 +203,8 @@ export function AppProvider({ children }) {
       supabase.from('insurance_policies').select('*').eq('surveyor_id', userId).maybeSingle(),
       supabase.from('conversations').select('*').order('created_at', { ascending: false }),
       supabase.from('messages').select('*').order('created_at', { ascending: true }),
+      // RLS scopes this to the org's own reports (admin sees all).
+      supabase.from('hazard_reports').select('*').order('created_at', { ascending: false }),
     ])
 
     if (!mountedRef.current) return
@@ -232,6 +258,7 @@ export function AppProvider({ children }) {
     setCurrentUser(me)
     setUsers(buildUsersList(profiles || [], surveyors || [], councils || [], landlords || [], docsBySurv, reviewsBySurv))
     setRequests((rawRequests || []).map(r => mapRequest(r, quotesByReq, userId, reviewsByReq)))
+    setReports(reportsData || [])
     setProperties(propertiesData || [])
     setNotifications(notificationsData || [])
     setConversations(conversationsData)
@@ -399,6 +426,10 @@ export function AppProvider({ children }) {
       if (patch.bio !== undefined) survPatch.bio = patch.bio
       if (patch.qualifications !== undefined) survPatch.qualifications = patch.qualifications
       if (patch.propertyTypes !== undefined) survPatch.property_types = patch.propertyTypes
+      if (patch.coverageAreas !== undefined) survPatch.coverage_areas = patch.coverageAreas
+      if (patch.availabilityStatus !== undefined) survPatch.availability_status = patch.availabilityStatus
+      if (patch.availableFrom !== undefined) survPatch.available_from = patch.availableFrom || null
+      if (patch.acceptsEmergency !== undefined) survPatch.accepts_emergency = patch.acceptsEmergency
       if (Object.keys(survPatch).length) {
         await supabase.from('surveyors').update(survPatch).eq('profile_id', currentUser.id)
       }
@@ -476,18 +507,40 @@ export function AppProvider({ children }) {
   }, [currentUser, loadAll, showToast])
 
   const createRequest = useCallback(async (req) => {
-    if (!currentUser) return
-    const { error } = await supabase.from('survey_requests').insert({
+    if (!currentUser) return null
+    const awaabs = !!req.awaabsApplies
+    const { data, error } = await supabase.from('survey_requests').insert({
       council_id: currentUser.id,
       title: req.title, type: req.type, region: req.region,
       address: req.address, deadline: req.deadline, budget: req.budget || null,
       description: req.description, contact: req.contact, status: 'open',
       property_id: req.propertyId || null,
       property_type: req.propertyType || null,
-    })
-    if (error) { showToast(error.message, 'error'); return }
+      postcode: req.postcode || null,
+      awaabs_applies: awaabs,
+      hazard_category: awaabs ? (req.hazardCategory || null) : null,
+      hazard_severity: awaabs ? (req.hazardSeverity || null) : null,
+      reported_at: awaabs ? (req.reportedAt || new Date().toISOString()) : null,
+      resident_name: req.residentName || null,
+      resident_contact: req.residentContact || null,
+      source_report_id: req.sourceReportId || null,
+    }).select('id').single()
+    if (error) { showToast(error.message, 'error'); return null }
+    // If this job came from a resident report, mark that report triaged + link it.
+    if (req.sourceReportId && data?.id) {
+      await supabase.from('hazard_reports')
+        .update({ status: 'triaged', request_id: data.id }).eq('id', req.sourceReportId)
+    }
     showToast('Survey request published!', 'success')
     await loadAll(currentUser.id)
+    return data?.id || null
+  }, [currentUser, loadAll, showToast])
+
+  const dismissReport = useCallback(async (reportId) => {
+    const { error } = await supabase.from('hazard_reports').update({ status: 'dismissed' }).eq('id', reportId)
+    if (error) { showToast(error.message, 'error'); return }
+    showToast('Report dismissed')
+    await loadAll(currentUser?.id)
   }, [currentUser, loadAll, showToast])
 
   const createProperty = useCallback(async (p) => {
@@ -636,6 +689,18 @@ export function AppProvider({ children }) {
     return true
   }, [currentUser, loadAll, showToast])
 
+  // Mark an Awaab's Law milestone done (sets the *_at timestamp to now).
+  // milestone: 'investigated' | 'summary_sent' | 'made_safe'
+  const setAwaabsMilestone = useCallback(async (reqId, milestone) => {
+    const col = { investigated: 'investigated_at', summary_sent: 'summary_sent_at', made_safe: 'made_safe_at' }[milestone]
+    if (!col) return
+    const { error } = await supabase.from('survey_requests').update({ [col]: new Date().toISOString() }).eq('id', reqId)
+    if (error) { showToast(error.message, 'error'); return }
+    const label = { investigated: 'Investigation logged', summary_sent: 'Written summary logged', made_safe: 'Hazard made safe' }[milestone]
+    showToast(label, 'success')
+    await loadAll(currentUser?.id)
+  }, [currentUser, loadAll, showToast])
+
   const updateRequestStatus = useCallback(async (reqId, status) => {
     const { error } = await supabase.from('survey_requests').update({ status }).eq('id', reqId)
     if (error) { showToast(error.message, 'error'); return }
@@ -661,22 +726,24 @@ export function AppProvider({ children }) {
   const refresh = useCallback(() => loadAll(currentUser?.id), [currentUser, loadAll])
 
   const value = useMemo(() => ({
-    session, currentUser, users, requests, properties, notifications, conversations, toasts, ready,
+    session, currentUser, users, requests, reports, properties, notifications, conversations, toasts, ready,
     register, login, demoLogin, logout, changePassword, requestPasswordReset,
-    updateCurrentUser, addDocument, createRequest, closeRequest,
+    updateCurrentUser, addDocument, createRequest, closeRequest, dismissReport,
     createProperty, deleteProperty,
     submitQuote, withdrawQuote, awardQuote, updateRequestStatus, submitReview,
+    setAwaabsMilestone,
     submitInsurance, setInsuranceStatus,
     sendMessage, markConversationRead,
     setSurveyorStatus, setDocumentStatus,
     markNotificationRead, markAllNotificationsRead, refreshNotifications,
     refresh,
     showToast,
-  }), [session, currentUser, users, requests, properties, notifications, conversations, toasts, ready,
+  }), [session, currentUser, users, requests, reports, properties, notifications, conversations, toasts, ready,
        register, login, demoLogin, logout, changePassword, requestPasswordReset,
-       updateCurrentUser, addDocument, createRequest, closeRequest,
+       updateCurrentUser, addDocument, createRequest, closeRequest, dismissReport,
        createProperty, deleteProperty,
        submitQuote, withdrawQuote, awardQuote, updateRequestStatus, submitReview,
+       setAwaabsMilestone,
        submitInsurance, setInsuranceStatus,
        sendMessage, markConversationRead,
        setSurveyorStatus, setDocumentStatus,
