@@ -122,24 +122,29 @@ Mobile-first browse for surveyors on the road · push notifications · advanced 
 
 ## Pre-launch — outstanding
 
-### A. Email + domain — TODO (blocks reset & notification emails reaching real users)
+### A. Email + domain — IN PROGRESS (DNS done; Supabase config + verify remaining)
 Two email paths, **both need a verified sending domain**:
 1. **Auth emails** (password reset, signup confirm) — sent by Supabase Auth, currently on the built-in tester (low rate limit, unbranded, spam-prone). Needs custom SMTP.
 2. **Notification emails** (quote / award / message) — sent by the `send-notification-email` edge function via the Resend API. Falls back to `onboarding@resend.dev` (Resend test domain — only delivers to the Resend account owner) until `EMAIL_FROM` is set to a verified domain.
 
-Steps:
-1. **Register a domain.** _DECISION PENDING — name under review._ Leading candidate (2026-06-14): **Surveyloop** (`surveyloop.co.uk` + `surveyloop.uk` looked available on Crazy Domains; no existing UK surveying firm by that name; `.com`/`.io` held by an unrelated survey-software product). Kerri is gathering feedback from industry contacts before committing — do not register until confirmed.
-2. **Resend** → add + verify the domain (SPF / DKIM / MX DNS records at registrar) → create an API key (`re_…`).
-3. **Supabase → Edge Functions → Secrets:** set `RESEND_API_KEY`, `EMAIL_FROM` = `Surveyors UK <noreply@DOMAIN>`, `WEBHOOK_SECRET` (must match whatever triggers the fn — **verify the trigger/webhook wiring**).
-4. **Supabase → Authentication → Emails → SMTP Settings:** enable custom SMTP via Resend (`smtp.resend.com:465`, user `resend`, pass = API key). Set **Site URL** = `https://surveyors-uk.vercel.app`.
-5. **Test** the reset email and a notification email end-to-end.
+Status / steps:
+1. ✓ **Domain `outsourcesurveys.uk`** (Crazy Domains, trading name "Outsource Surveys"). Business not yet registered with Companies House.
+2. ✓ **DNS moved to Cloudflare (free)** — Crazy Domains standard DNS couldn't do TXT records. Nameservers julio/miki.ns.cloudflare.com. **All DNS now managed in Cloudflare.** Full record list in `dns-records-checklist.md`. Two SPF records on separate names (root = Google `_spf.google.com`, `send` = Resend amazonses) so no conflict.
+3. ✓ **Google Workspace mailboxes LIVE** — kerri@ (paid) + hello@/info@ (aliases), verified via Google CNAME.
+4. ✓ **All email DNS records entered in Cloudflare** (Google SPF/DKIM + Resend DKIM/SPF/MX + shared DMARC `p=none`). ⏳ Awaiting nameserver propagation, then **verify** in Resend ("I've added the records") and Google Admin ("Start authentication").
+5. ⏳ **Resend** account created, domain added (EU/Ireland region). Create API key (`re_…`) once verified.
+6. ⏳ **Supabase → Edge Functions → Secrets:** set `RESEND_API_KEY`, `EMAIL_FROM` = `Outsource Surveys <noreply@outsourcesurveys.uk>`, `WEBHOOK_SECRET` = the Vault `email_webhook_secret` value (must match). Wiring already audited & confirmed good (trigger `email_on_notification_insert` → `send_notification_email()` → edge fn).
+7. ⏳ **Confirm `verify_jwt = false`** on the edge function.
+8. ⏳ **Supabase → Authentication → SMTP:** enable custom SMTP via Resend (`smtp.resend.com:465`, user `resend`, pass = API key). Set **Site URL**.
+9. ⏳ **Test** the reset email and a notification email end-to-end.
 
 ### B. Other launch items
-- **Enable Leaked Password Protection** — Supabase Auth settings toggle (clears the last security advisor).
+- ✓ **Leaked Password Protection ENABLED** (2026-06-15).
 - **Billing / subscriptions** — unbuilt; blocked on the pricing tier £ numbers + Stripe confirmation (model decided 2026-06-08, see Pricing).
 - **Consent timestamp** — store `profiles.agreed_terms_at` for GDPR proof-of-consent (registration consent is UI-gated only right now).
 - **Legal pages are DRAFTS** (`/privacy`, `/terms`) — have counsel review before launch.
-- Optional/low-priority advisors: narrow the public `website` storage bucket SELECT policy; `pg_net` in public schema (leave — tied to the email webhook).
+- ✓ `website` storage bucket SELECT policy narrowed (2026-06-15). `pg_net` in public schema left as-is (tied to email webhook).
+- **DB hardening done 2026-06-15** (see HANDOFF) — fixed critical RLS infinite-recursion on survey_requests/quotes/properties; `is_admin()`/`is_conversation_participant()` moved to `private` schema (reference as `private.is_admin()` in any new policy); perf advisor now 0 warnings.
 
 ---
 

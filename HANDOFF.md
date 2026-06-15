@@ -6,18 +6,50 @@ Format: newest entries at the top. Keep entries short. Delete anything stale.
 
 ---
 
-## ⭐ NEXT UP — Email + domain setup (mostly dashboard/registrar work, not code)
+## ⭐ NEXT UP — Finish email activation (DNS done; Supabase config + verify left)
 
-Reset emails and notification emails won't reach real users until a sending domain is verified. Full step-by-step is in **`BUILD-SPEC.md` → "Pre-launch — outstanding → A. Email + domain"**. Short version:
-1. Register a domain — name UNDER REVIEW (leading candidate: **Surveyloop**; Kerri gathering industry feedback before committing). `surveyloop.co.uk`/`.uk` looked available on Crazy Domains. Don't register until Kerri confirms.
-2. Verify it in Resend (DNS records) → get API key.
-3. Supabase Edge Function secrets: `RESEND_API_KEY`, `EMAIL_FROM`, `WEBHOOK_SECRET`.
-4. Supabase Auth → custom SMTP (Resend) + set Site URL.
-5. Enable Leaked Password Protection toggle. Test both email paths.
+Domain + DNS are sorted. **Google Workspace mailboxes are live** (kerri@/hello@/info@). **All email DNS records are entered in Cloudflare** (see `dns-records-checklist.md`). Remaining to make app email actually send:
 
-Claude can help with: verifying the `WEBHOOK_SECRET`/trigger wiring for `send-notification-email`, editing the edge-function `EMAIL_FROM` default or templates, and any code changes. Registrar/Resend/dashboard steps are Kerri's.
+1. ✓ Domain `outsourcesurveys.uk` (Crazy Domains) + ✓ DNS moved to **Cloudflare** (free) — nameservers julio/miki.ns.cloudflare.com. Crazy Domains standard DNS couldn't do TXT; Cloudflare can.
+2. **Verify** once Cloudflare nameservers fully propagate: Resend → "I've added the records"; Google Admin → "Start authentication". (Both may sit pending until propagation completes.)
+3. **Supabase Edge Function secrets** (send-notification-email): `RESEND_API_KEY` (re_… — the actual on/off switch), `EMAIL_FROM` = `Outsource Surveys <noreply@outsourcesurveys.uk>`, `WEBHOOK_SECRET` = the Vault `email_webhook_secret` value (must match exactly).
+4. **Confirm `verify_jwt = false`** on the function (trigger calls it with only the webhook secret).
+5. **Supabase Auth → SMTP**: point at Resend (`smtp.resend.com:465`, user `resend`, pass = API key) + set Site URL. Then test both paths.
+6. ✓ Leaked Password Protection ENABLED.
+
+Optional cleanup: re-add Google verification CNAME (`nddfsctutzbg` → `gv-uvdvrxgxq2mtm6.dv.googlehosted.com`) in Cloudflare — didn't carry over from Crazy Domains; domain stays verified for now.
 
 Then the last big build is **billing/subscriptions** (blocked on pricing £ numbers + Stripe).
+
+## Also pending (not blocking)
+- **Move repo out of OneDrive** → `C:\dev\surveyors-uk` (OneDrive sync causes `.git/index.lock` issues). Commit+push first, then `git clone` to the new location, recreate `.env.local`, `npm install`. GitHub is the backup, not OneDrive.
+- **LinkedIn lookup hardening** — `match_linkedin_profile` is anon-callable (needed for pre-login signup match) but returns scraped personal data; consider exact-email-only matching or rate limiting.
+- **Branding decision** — app/email say "Surveyors UK"; company/domain is "Outsource Surveys". Align before launch?
+
+---
+
+## 2026-06-15 — Cowork (Claude) — Email + domain + DNS → Cloudflare
+
+- **Domain:** `outsourcesurveys.uk` bought via Crazy Domains (trading name "Outsource Surveys"). Business not yet registered with Companies House.
+- **Google Workspace email LIVE:** kerri@ (paid) + hello@/info@ (free aliases). Verified via Google CNAME method.
+- **DNS moved to Cloudflare (free).** Crazy Domains standard DNS only does A/AAAA/CNAME/MX — couldn't add the TXT records. Cloudflare scanned/imported existing records; nameservers switched at Crazy Domains to julio/miki.ns.cloudflare.com. From now on **all DNS is managed in Cloudflare**, not Crazy Domains.
+- **All 9 DNS records entered in Cloudflare** (see `dns-records-checklist.md`): A root+www (parking, proxied), MX root smtp.google.com pri1, MX send feedback-smtp.eu-west-1.amazonses.com pri10, TXT root Google SPF, TXT google._domainkey (Google DKIM), TXT resend._domainkey (Resend DKIM), TXT send (Resend SPF v=spf1 include:amazonses.com ~all), TXT _dmarc (v=DMARC1; p=none;). Two SPF on separate names (root=Google, send=Resend) → no conflict. Google verification CNAME not re-added (optional).
+- **Resend:** account created, domain added in **EU (Ireland / eu-west-1)** region. Awaiting verification (click after Cloudflare propagates).
+- **Edge fn wiring audited & confirmed good:** trigger `email_on_notification_insert` → `send_notification_email()` (pulls Vault `email_webhook_secret`, posts to edge fn w/ x-webhook-secret). Vault secret is set. Edge fn ready; just needs RESEND_API_KEY + EMAIL_FROM secrets + verify_jwt=false confirmed. See NEXT UP.
+- Also: app confirmed already fully built (React/Vite, connected to Supabase) — "wire up prototype" was already done; smoke-test build clean.
+
+---
+
+## 2026-06-15 — Cowork (Claude) — DB security/perf hardening + CRITICAL RLS recursion fix
+
+Ran Supabase security + performance advisors and fixed the findings. 8 migrations. All verified by impersonating real users (set role + request.jwt.claims sub).
+
+- **CRITICAL (was breaking the app): infinite RLS recursion.** `survey_requests`, `quotes`, `properties` policies referenced each other in a loop → every authenticated query on them threw "infinite recursion detected in policy". Fixed by moving the cross-table checks into SECURITY DEFINER helpers in a new **`private`** schema: `request_is_open`, `request_council_id`, `surveyor_has_quote`, `property_has_visible_request`, `can_review` (they read the other table without triggering its RLS). Migrations `add_rls_definer_helpers`, `rls_fix_recursion_and_initplan`. Verified: surveyor/council/admin see correct rows, owner of the one quote sees it, non-owners don't, anon gets empty (not error).
+- **`is_admin()` + `is_conversation_participant()` MOVED to `private` schema** (no longer exposed as REST RPC). Policies now call `private.is_admin()`. `enforce_insurance_status` repointed. App code doesn't call these directly (checked) so no frontend change needed. NOTE: any NEW policy/function must reference `private.is_admin()`, not `public.`.
+- **Performance:** wrapped `auth.uid()`/`is_admin()` in `(select …)` across all policies (cleared 41 initplan warnings) + consolidated duplicate admin "FOR ALL" policies (conversations/insurance/reviews/linkedin) → perf advisor now 0 warnings. Added covering indexes on 10 FKs (`add_foreign_key_indexes`).
+- **Security:** narrowed the `website` bucket (dropped the list-everything SELECT policy; public URLs still work). `match_linkedin_profile` — briefly restricted to authenticated, then RESTORED to anon (`restore_anon_match_linkedin_for_signup`) because Register.jsx calls it pre-login; keep it anon. Leaked-password protection enabled (dashboard).
+- **Left as-is:** `pg_net` in public (tied to email webhook — moving it risks breaking notifications). 7 remaining security advisor warnings are all intentional public RPCs (submit_hazard_report, org_public_name anon; claim/match_linkedin authed) — accepted.
+- Frontend `npm run build` clean; lint has 7 pre-existing `set-state-in-effect` errors (not addressed).
 
 ---
 
