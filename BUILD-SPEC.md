@@ -54,6 +54,19 @@ A **Plentific-style marketplace** for the UK surveying industry. Three sides:
 
 ---
 
+## Commercials — payments & fees (modelled 2026-06-16; Stripe deferred)
+
+Two revenue lines, **modelled in the app now; real Stripe billing wired once the business is registered with Companies House + has a business bank account.**
+
+1. **Subscriptions** — both surveyors and organisations pay a recurring fee to use the platform. Prices are admin-set (`platform_settings.surveyor_plan_price` / `org_plan_price`), currently "to be confirmed". Pre-launch everyone is a free "Founding member"; no access gating enforced yet.
+2. **Commission on completed jobs — added ON TOP.** When a job is marked complete, the platform takes a percentage (**default 10%**, admin-editable) *on top of* the surveyor's fee. The **surveyor keeps their full agreed fee**; the **organisation pays fee × (1 + rate)**. Example at 10%: surveyor fee £300 → org pays £330 → platform keeps £30.
+
+**How it's built:** `platform_settings` (single-row config, commission rate + plan prices), `subscriptions` (per-profile, Stripe-ready but inert), `job_charges` (commission snapshot auto-created by SECURITY DEFINER trigger `create_job_charge` when `survey_requests.status → completed`, reading the winning quote's price × current rate). UI: organisation **Billing** tab (invoices: fee + platform fee + total), surveyor **Earnings** tab (their fee), admin **Billing** tab (edit rate/prices + revenue overview), and a payment breakdown on completed jobs.
+
+**Still to do:** set real subscription prices; wire Stripe (Billing for subscriptions, invoicing/Connect for commission + surveyor payouts); decide if/when to gate access on an active subscription.
+
+---
+
 ## Schema — current (Phase 1 — ✓ DONE)
 
 ```

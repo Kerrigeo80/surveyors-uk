@@ -6,11 +6,16 @@ Format: newest entries at the top. Keep entries short. Delete anything stale.
 
 ---
 
-## ⭐ NEXT UP — Payments & fees (design + build)
+## ⭐ NEXT UP — Wire Stripe (blocked on business registration)
 
-Surveyor + customer sides are built and **LIVE** (email working, domain pointed at the app). The remaining core build is **payments/fees**: invoicing between organisation and surveyor, and whether the platform takes a cut (pricing model + Stripe). **Not started — needs a design decision first** (what flows through the platform, % cut vs subscription, etc.).
+Payments are now **modelled in-app**: **10% commission added on top** of completed jobs (surveyor keeps full fee; org pays fee×1.10) + subscription tiers both sides. Admin → Billing drives the rate + plan prices. DB-tested. What's left:
+
+1. **Set real subscription prices** in admin → Billing (currently "to be confirmed").
+2. **Wire Stripe** — Billing for subscriptions + invoicing/Connect for the commission & surveyor payouts. **Blocked on** registering the business with Companies House + a business bank account (Stripe needs these for payouts).
 
 Parked until closer to launch: **go-live prep** (backups/PITR, final SSL confirmation), **Companies House** auto-check for surveyor entities (needs the free CH API key).
+
+Quick housekeeping: **rotate the Resend API key** (shared in chat 2026-06-16).
 
 ## Also pending (not blocking)
 - **Rotate the Resend API key** — shared in chat 2026-06-16; create a fresh one in Resend + update the Supabase edge-fn `RESEND_API_KEY` secret.
@@ -31,6 +36,7 @@ Big session. Repo moved off OneDrive to `C:\Users\kerri\Projects\surveyors-uk`. 
 - **Email LIVE & tested.** Resend secrets set in edge fn (`RESEND_API_KEY`, `EMAIL_FROM`, `WEBHOOK_SECRET`=vault value, `SITE_URL`). Test: inserting a notification → pg_net 200 `{"sent":true}` → email received in inbox. (Auth SMTP still default Supabase sender — optional follow-up.)
 - **Domain:** `outsourcesurveys.uk` pointed at Vercel — Cloudflare root **A → 76.76.21.21**, **www CNAME → cname.vercel-dns.com**, both **DNS-only (grey cloud)**. www is primary; apex 308-redirects. SSL issued. Supabase Auth Site URL + redirect URLs set to the new domain (fixed the localhost:3000 reset-link bug).
 - **Customer model unified** (migration `unify_customer_org_type`). Councils + landlords → one **"Organisation"** customer (still the `council` role under the hood — no enum churn). `councils.org_type` (council/housing_association/almo/managing_agent/property_company/private_landlord) + `councils.address`. `properties_insert` RLS now allows the council role. Registration = **Surveyor + Organisation** (org_type select); landlord signup retired. CouncilDashboard = unified Organisation dashboard (added Properties tab ported from landlord; ProfileTab has org_type+address; sidebar shows org type). Landing + Admin relabelled ("Organisations"). Legacy `landlord` role/route/LandlordDashboard kept for back-compat (no real landlord data).
+- **Payments model** (migration `payments_model_foundation`) — **modelled, Stripe NOT wired** (deferred until business registered + bank). Model: subscriptions both sides + **10% commission added on top** of completed jobs (surveyor keeps full fee; org pays fee×1.10; platform keeps 10%). Tables: `platform_settings` (commission_rate=0.10 + plan prices, admin-editable), `subscriptions` (Stripe-ready/inert), `job_charges` (auto-snapshot via SECURITY DEFINER trigger `create_job_charge` on status→completed, from winning quote × rate). DB-tested: £300 → fee 300 / commission 30 / total 330. UI: Org 💷 Billing (invoices), Surveyor 💷 Earnings, Admin 💷 Billing (edit rate/prices + revenue stats), payment breakdown on completed job. Sub prices still TBC; everyone "Founding member (free)", no gating yet.
 - Security advisors clean — remaining warnings all intentional (pg_net in public; anon `submit_hazard_report`/`org_public_name`; authenticated `claim_linkedin_profile`/`accept_offer`).
 
 ---
