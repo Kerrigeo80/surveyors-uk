@@ -184,6 +184,7 @@ export function AppProvider({ children }) {
   const [settings, setSettings] = useState(null)
   const [mySubscription, setMySubscription] = useState(null)
   const [jobCharges, setJobCharges] = useState([])
+  const [jobReports, setJobReports] = useState([])
   const [toasts, setToasts] = useState([])
   const [ready, setReady] = useState(false)
   const mountedRef = useRef(true)
@@ -199,7 +200,7 @@ export function AppProvider({ children }) {
     if (!userId) {
       setCurrentUser(null); setUsers([]); setRequests([]); setReports([])
       setNotifications([]); setConversations([]); setOffers([])
-      setSettings(null); setMySubscription(null); setJobCharges([])
+      setSettings(null); setMySubscription(null); setJobCharges([]); setJobReports([])
       return
     }
     const [
@@ -224,7 +225,7 @@ export function AppProvider({ children }) {
     const [
       { data: propertiesData }, { data: notificationsData }, { data: reviews },
       { data: myInsurance }, { data: convs }, { data: msgs }, { data: reportsData },
-      { data: offersData }, { data: settingsData }, { data: mySubData }, { data: chargesData },
+      { data: offersData }, { data: settingsData }, { data: mySubData }, { data: chargesData }, { data: jobReportsData },
     ] = await Promise.all([
       supabase.from('properties').select('*').order('created_at', { ascending: false }),
       supabase.from('notifications').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(50),
@@ -240,6 +241,8 @@ export function AppProvider({ children }) {
       supabase.from('subscriptions').select('*').eq('profile_id', userId).maybeSingle(),
       // RLS scopes charges to the org / surveyor on them (admin sees all).
       supabase.from('job_charges').select('*').order('created_at', { ascending: false }),
+      // RLS scopes report deliverables to the org / surveyor on them (admin sees all).
+      supabase.from('job_reports').select('*').order('created_at', { ascending: false }),
     ])
 
     if (!mountedRef.current) return
@@ -309,6 +312,11 @@ export function AppProvider({ children }) {
       surveyorFee: c.surveyor_fee, commissionRate: c.commission_rate,
       commissionAmount: c.commission_amount, orgTotal: c.org_total,
       status: c.status, createdAt: c.created_at,
+    })))
+    setJobReports((jobReportsData || []).map(r => ({
+      id: r.id, requestId: r.request_id, surveyorId: r.surveyor_id,
+      method: r.method, notes: r.notes, files: r.files || [],
+      status: r.status, createdAt: r.created_at,
     })))
   }, [])
 
@@ -792,6 +800,32 @@ export function AppProvider({ children }) {
     return true
   }, [currentUser, loadAll, showToast])
 
+  // Surveyor delivers their finished report: upload files to the private 'reports'
+  // bucket under {requestId}/..., then record the submission (merging any prior files).
+  const submitReport = useCallback(async (requestId, { notes, files }) => {
+    if (!currentUser) return false
+    const uploaded = []
+    for (const f of (files || [])) {
+      const safe = f.name.replace(/[^a-zA-Z0-9.\-_]/g, '_')
+      const path = `${requestId}/${Date.now()}-${safe}`
+      const { error: upErr } = await supabase.storage.from('reports').upload(path, f, {
+        upsert: false, contentType: f.type || 'application/octet-stream',
+      })
+      if (upErr) { showToast('Upload failed: ' + upErr.message, 'error'); return false }
+      uploaded.push({ path, name: f.name })
+    }
+    const existing = jobReports.find(r => r.requestId === requestId)
+    const mergedFiles = [...(existing?.files || []), ...uploaded]
+    const { error } = await supabase.from('job_reports').upsert({
+      request_id: requestId, surveyor_id: currentUser.id,
+      method: 'upload', notes: notes || '', files: mergedFiles, status: 'submitted',
+    }, { onConflict: 'request_id' })
+    if (error) { showToast(error.message, 'error'); return false }
+    showToast('Report delivered', 'success')
+    await loadAll(currentUser.id)
+    return true
+  }, [currentUser, jobReports, loadAll, showToast])
+
   // Mark an Awaab's Law milestone done (sets the *_at timestamp to now).
   // milestone: 'investigated' | 'summary_sent' | 'made_safe'
   const setAwaabsMilestone = useCallback(async (reqId, milestone) => {
@@ -842,11 +876,11 @@ export function AppProvider({ children }) {
   const refresh = useCallback(() => loadAll(currentUser?.id), [currentUser, loadAll])
 
   const value = useMemo(() => ({
-    session, currentUser, users, requests, reports, properties, notifications, conversations, offers, settings, mySubscription, jobCharges, toasts, ready,
+    session, currentUser, users, requests, reports, properties, notifications, conversations, offers, settings, mySubscription, jobCharges, jobReports, toasts, ready,
     register, login, demoLogin, logout, changePassword, requestPasswordReset,
     updateCurrentUser, addDocument, createRequest, closeRequest, dismissReport,
     createProperty, deleteProperty,
-    submitQuote, withdrawQuote, awardQuote, updateRequestStatus, submitReview,
+    submitQuote, withdrawQuote, awardQuote, updateRequestStatus, submitReview, submitReport,
     createOffer, withdrawOffer, declineOffer, acceptOffer,
     setAwaabsMilestone,
     submitInsurance, setInsuranceStatus, setEntityStatus,
@@ -855,11 +889,11 @@ export function AppProvider({ children }) {
     markNotificationRead, markAllNotificationsRead, refreshNotifications,
     refresh,
     showToast,
-  }), [session, currentUser, users, requests, reports, properties, notifications, conversations, offers, settings, mySubscription, jobCharges, toasts, ready,
+  }), [session, currentUser, users, requests, reports, properties, notifications, conversations, offers, settings, mySubscription, jobCharges, jobReports, toasts, ready,
        register, login, demoLogin, logout, changePassword, requestPasswordReset,
        updateCurrentUser, addDocument, createRequest, closeRequest, dismissReport,
        createProperty, deleteProperty,
-       submitQuote, withdrawQuote, awardQuote, updateRequestStatus, submitReview,
+       submitQuote, withdrawQuote, awardQuote, updateRequestStatus, submitReview, submitReport,
        createOffer, withdrawOffer, declineOffer, acceptOffer,
        setAwaabsMilestone,
        submitInsurance, setInsuranceStatus, setEntityStatus,

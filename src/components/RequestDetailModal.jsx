@@ -3,6 +3,7 @@ import { useApp } from '../lib/AppContext.jsx'
 import { formatDateGB, qualLabel, getInitials, propertyTypeLabel, isInsured, awaabsClock, dueLabel, severityLabel, hazardCategoryLabel, COMPLIANCE_COLOR, isMatch, formatGBP, commissionBreakdown } from '../lib/data.js'
 import SubmitQuoteModal from './SubmitQuoteModal.jsx'
 import ConversationThread from './ConversationThread.jsx'
+import DocumentLink from './DocumentLink.jsx'
 import { RatingDisplay, RatingInput } from './RatingStars.jsx'
 
 export default function RequestDetailModal({ request: r, onClose }) {
@@ -176,6 +177,9 @@ export default function RequestDetailModal({ request: r, onClose }) {
           </div>
         )}
 
+        {/* Survey report — surveyor delivers, org reviews */}
+        <ReportSection request={r} />
+
         {/* Requester: lifecycle progression */}
         {isRequester && r.status === 'awarded' && (
           <button className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', marginTop: '16px' }}
@@ -304,6 +308,89 @@ function DirectOfferSection({ request: r }) {
               </div>
             )
           })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ReportSection({ request: r }) {
+  const { currentUser, jobReports, submitReport } = useApp()
+  const isSurveyor = currentUser?.role === 'surveyor'
+  const isRequester = currentUser?.id === r.councilId
+  const isAdmin = currentUser?.role === 'admin'
+  const wonQuote = r.quotes.find(q => q.status === 'won')
+  const iAmWinner = isSurveyor && wonQuote && wonQuote.surveyor_id === currentUser.id
+  const report = jobReports.find(rep => rep.requestId === r.id)
+  const active = ['awarded', 'in_progress', 'completed'].includes(r.status)
+  const [notes, setNotes] = useState(report?.notes || '')
+  const [files, setFiles] = useState([])
+  const [saving, setSaving] = useState(false)
+
+  if (!active) return null
+  if (!iAmWinner && !isRequester && !isAdmin) return null
+
+  const QUOTEM_URL = 'https://www.quotem.co.uk'
+
+  const deliver = async () => {
+    if (!files.length && !notes.trim()) return
+    setSaving(true)
+    const ok = await submitReport(r.id, { notes, files })
+    setSaving(false)
+    if (ok) setFiles([])
+  }
+
+  const hasReport = report && ((report.files && report.files.length > 0) || report.notes)
+
+  return (
+    <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid var(--border)' }}>
+      <strong>Survey report</strong>
+      {hasReport ? (
+        <div style={{ marginTop: '10px', padding: '12px', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span className="badge badge-verified">Delivered</span>
+            <span style={{ fontSize: '12px', color: 'var(--text-light)' }}>{formatDateGB(report.createdAt)}</span>
+          </div>
+          {report.notes && <p style={{ fontSize: '13px', color: 'var(--text-light)', margin: '8px 0' }}>{report.notes}</p>}
+          {(report.files || []).length > 0 && (
+            <ul className="qual-list" style={{ marginTop: '8px' }}>
+              {report.files.map((f, i) => (
+                <li key={i} className="qual-item" style={{ padding: '6px 0' }}>
+                  <div className="qual-info"><span className="qual-file-icon">📄</span><div style={{ fontSize: '13px' }}>{f.name}</div></div>
+                  <DocumentLink filePath={f.path} bucket="reports" label="Download" />
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      ) : (
+        <p style={{ fontSize: '13px', color: 'var(--text-light)', margin: '8px 0' }}>
+          {iAmWinner ? 'Deliver your finished report below.' : 'No report delivered yet.'}
+        </p>
+      )}
+
+      {iAmWinner && r.status !== 'completed' && (
+        <div style={{ marginTop: '12px' }}>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center', marginBottom: '12px' }}>
+            <a className="btn btn-outline btn-sm" href={QUOTEM_URL} target="_blank" rel="noreferrer" title="Direct Quotem integration coming soon">
+              Create with Quotem ↗
+            </a>
+            <span style={{ fontSize: '12px', color: 'var(--text-light)' }}>
+              (integration coming — for now, create it there, then upload below)
+            </span>
+          </div>
+          <label className="upload-zone" htmlFor="reportFiles" style={{ display: 'block' }}>
+            <div className="upload-icon">📁</div>
+            <p>{files.length ? `${files.length} file(s) selected` : 'Click to attach your report + photos (PDF, JPG, PNG, DOC)'}</p>
+            <input id="reportFiles" type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" style={{ display: 'none' }}
+              onChange={e => setFiles(Array.from(e.target.files || []))} />
+          </label>
+          <textarea rows={2} value={notes} onChange={e => setNotes(e.target.value)} placeholder="Notes for the organisation (optional)"
+            style={{ width: '100%', marginTop: '10px' }} />
+          <button className="btn btn-primary btn-sm" style={{ marginTop: '10px' }}
+            disabled={saving || (!files.length && !notes.trim())} onClick={deliver}>
+            {saving ? 'Delivering…' : (hasReport ? 'Add to report' : 'Deliver report')}
+          </button>
         </div>
       )}
     </div>
