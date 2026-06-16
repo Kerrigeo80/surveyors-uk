@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useApp } from '../lib/AppContext.jsx'
-import { formatDateGB, qualLabel, getInitials, propertyTypeLabel, isInsured, awaabsClock, dueLabel, severityLabel, hazardCategoryLabel, COMPLIANCE_COLOR } from '../lib/data.js'
+import { formatDateGB, qualLabel, getInitials, propertyTypeLabel, isInsured, awaabsClock, dueLabel, severityLabel, hazardCategoryLabel, COMPLIANCE_COLOR, isMatch, formatGBP } from '../lib/data.js'
 import SubmitQuoteModal from './SubmitQuoteModal.jsx'
 import ConversationThread from './ConversationThread.jsx'
 import { RatingDisplay, RatingInput } from './RatingStars.jsx'
@@ -52,11 +52,16 @@ export default function RequestDetailModal({ request: r, onClose }) {
         <Section label="Contact"><span>{r.contact}</span></Section>
 
         {/* Surveyor: submit / withdraw quote */}
-        {isSurveyor && r.status === 'open' && !myQuote && currentUser.status === 'active' && (
+        {isSurveyor && r.status === 'open' && !myQuote && currentUser.workReady && (
           <button className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', marginTop: '16px' }}
             onClick={() => setShowSubmit(true)}>
             Submit a Quote
           </button>
+        )}
+        {isSurveyor && r.status === 'open' && !myQuote && !currentUser.workReady && (
+          <div style={{ marginTop: '16px', padding: '12px 14px', background: '#fefcbf', border: '1px solid #f6e05e', borderRadius: 'var(--radius)', fontSize: '13px' }}>
+            Finish your verification (see the <strong>Verification</strong> tab) before you can quote on jobs.
+          </div>
         )}
         {isSurveyor && myQuote && (
           <div style={{ marginTop: '20px', padding: '16px', border: '2px solid var(--border)', borderRadius: 'var(--radius)' }}>
@@ -79,7 +84,7 @@ export default function RequestDetailModal({ request: r, onClose }) {
         )}
 
         {/* Surveyor: message the requester */}
-        {isSurveyor && currentUser.status === 'active' && (
+        {isSurveyor && currentUser.workReady && (
           <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid var(--border)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <strong style={{ fontSize: '13px' }}>Message {requesterLabel}</strong>
@@ -98,6 +103,9 @@ export default function RequestDetailModal({ request: r, onClose }) {
             )}
           </div>
         )}
+
+        {/* Requester: offer the job directly to a verified surveyor at a set fee */}
+        {isRequester && r.status === 'open' && <DirectOfferSection request={r} />}
 
         {/* Requester: review quotes + award + lifecycle */}
         {(isRequester || isAdmin) && r.quotes.length > 0 && (
@@ -199,6 +207,80 @@ export default function RequestDetailModal({ request: r, onClose }) {
         })()}
       </div>
       {showSubmit && <SubmitQuoteModal request={r} onClose={() => { setShowSubmit(false); onClose() }} />}
+    </div>
+  )
+}
+
+function DirectOfferSection({ request: r }) {
+  const { users, offers, createOffer, withdrawOffer } = useApp()
+  const [surveyorId, setSurveyorId] = useState('')
+  const [fee, setFee] = useState('')
+  const [message, setMessage] = useState('')
+  const [sending, setSending] = useState(false)
+
+  const ready = users.filter(u => u.role === 'surveyor' && u.workReady)
+  const sorted = ready.slice().sort((a, b) => (isMatch(r, b) ? 1 : 0) - (isMatch(r, a) ? 1 : 0))
+  const sent = offers.filter(o => o.requestId === r.id)
+
+  const send = async () => {
+    if (!surveyorId || !fee) return
+    setSending(true)
+    const ok = await createOffer({ requestId: r.id, surveyorId, fee, message })
+    setSending(false)
+    if (ok) { setSurveyorId(''); setFee(''); setMessage('') }
+  }
+
+  return (
+    <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid var(--border)' }}>
+      <strong>Offer this job directly</strong>
+      <p style={{ fontSize: '12px', color: 'var(--text-light)', margin: '4px 0 10px' }}>
+        Set a fee and offer the job to a verified surveyor — they accept or decline, no quoting. Best for urgent jobs.
+      </p>
+      {ready.length === 0 ? (
+        <p style={{ fontSize: '13px', color: 'var(--text-light)' }}>No verified surveyors available to offer yet.</p>
+      ) : (
+        <>
+          <div className="form-group">
+            <label>Surveyor</label>
+            <select value={surveyorId} onChange={e => setSurveyorId(e.target.value)}>
+              <option value="">Select a verified surveyor…</option>
+              {sorted.map(s => (
+                <option key={s.id} value={s.id}>
+                  {s.name}{isMatch(r, s) ? ' ✓ matches' : ''} — {s.region || '—'}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="form-group">
+            <label>Fee (£)</label>
+            <input type="number" value={fee} onChange={e => setFee(e.target.value)} placeholder="e.g. 1500" />
+          </div>
+          <div className="form-group">
+            <label>Message (optional)</label>
+            <textarea rows={2} value={message} onChange={e => setMessage(e.target.value)} placeholder="Any details for the surveyor" />
+          </div>
+          <button className="btn btn-primary btn-sm" disabled={sending || !surveyorId || !fee} onClick={send}>
+            {sending ? 'Sending…' : 'Send offer'}
+          </button>
+        </>
+      )}
+      {sent.length > 0 && (
+        <div style={{ marginTop: '14px' }}>
+          <div style={{ fontSize: '13px', fontWeight: 600, marginBottom: '6px' }}>Offers sent</div>
+          {sent.map(o => {
+            const s = users.find(u => u.id === o.surveyorId)
+            return (
+              <div key={o.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid var(--border)' }}>
+                <span style={{ fontSize: '13px' }}>{s?.name || 'Surveyor'} · {formatGBP(o.fee)}</span>
+                <span style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <span className={`badge badge-${o.status === 'accepted' ? 'verified' : o.status === 'offered' ? 'pending' : 'closed'}`}>{o.status}</span>
+                  {o.status === 'offered' && <button className="btn btn-outline btn-sm" onClick={() => withdrawOffer(o.id)}>Withdraw</button>}
+                </span>
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }

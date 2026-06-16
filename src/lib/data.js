@@ -45,6 +45,71 @@ export const AVAILABILITY_OPTIONS = [
   { id: 'unavailable', label: 'Unavailable' },
 ]
 
+// How a surveyor trades — needed so liability sits with their own entity.
+export const ENTITY_TYPES = [
+  { id: 'sole_trader', label: 'Sole trader' },
+  { id: 'limited_company', label: 'Limited company' },
+]
+
+// Annual fee income band → RICS minimum PI cover (mirrors private.required_pi_minimum in the DB).
+export const FEE_BANDS = [
+  { id: 'under_100k', label: 'Under £100k', piMin: 250000 },
+  { id: '100k_200k', label: '£100k – £200k', piMin: 500000 },
+  { id: 'over_200k', label: 'Over £200k', piMin: 1000000 },
+]
+
+export function feeBandPiMin(id) {
+  return FEE_BANDS.find(b => b.id === id)?.piMin || 250000
+}
+export function feeBandLabel(id) {
+  return FEE_BANDS.find(b => b.id === id)?.label || id
+}
+export function entityTypeLabel(id) {
+  return ENTITY_TYPES.find(e => e.id === id)?.label || id
+}
+export function formatGBP(n) {
+  if (n == null || n === '') return '—'
+  return '£' + Number(n).toLocaleString('en-GB')
+}
+
+// The four gates a surveyor must clear before they can take work.
+// Returns [{ key, label, done, detail }]. The authoritative gate is `workReady`
+// from the DB; this mirrors it for display so the surveyor sees what's outstanding.
+export function verificationChecklist(u) {
+  if (!u) return []
+  const piMin = feeBandPiMin(u.feeBand)
+  const cover = Number(u.insurance?.coverage_amount ?? u.insuranceCoverage ?? 0)
+  const insExpiryOk = !u.insuranceExpiry || new Date(u.insuranceExpiry) >= new Date(new Date().toDateString())
+  const insuranceDone = u.insuranceStatus === 'verified' && insExpiryOk && cover >= piMin
+  const entityDone = !!u.entityType && u.entityStatus === 'verified'
+  const qualDone = (u.documents || []).some(d => d.status === 'verified')
+  const liabilityDone = !!u.liabilityDeclaredAt
+  return [
+    {
+      key: 'entity', label: 'Registered business entity', done: entityDone,
+      detail: !u.entityType ? 'Tell us how you trade'
+        : u.entityStatus === 'verified' ? `${entityTypeLabel(u.entityType)} — verified`
+        : `${entityTypeLabel(u.entityType)} — awaiting verification`,
+    },
+    {
+      key: 'insurance', label: `Professional Indemnity insurance (min ${formatGBP(piMin)})`, done: insuranceDone,
+      detail: u.insuranceStatus === 'none' ? 'Not submitted'
+        : u.insuranceStatus !== 'verified' ? 'Awaiting verification'
+        : !insExpiryOk ? 'Policy expired'
+        : cover < piMin ? `Cover ${formatGBP(cover)} is below the ${formatGBP(piMin)} required for your fee band`
+        : `Verified — ${formatGBP(cover)} cover`,
+    },
+    {
+      key: 'qualification', label: 'At least one verified qualification', done: qualDone,
+      detail: qualDone ? 'Verified' : 'Upload a certificate to be verified',
+    },
+    {
+      key: 'liability', label: 'Liability declaration', done: liabilityDone,
+      detail: liabilityDone ? 'Signed' : 'Confirm you carry your own cover and accept liability',
+    },
+  ]
+}
+
 export const QUALIFICATION_TYPES = [
   { id: 'building', label: 'Building Surveying', desc: 'RICS Building Surveyor' },
   { id: 'quantity', label: 'Quantity Surveying', desc: 'Quantity Surveyor / Cost Consultant' },

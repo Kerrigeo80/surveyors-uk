@@ -2,17 +2,20 @@ import { useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { useApp } from '../lib/AppContext.jsx'
 import { supabase } from '../lib/supabase.js'
-import { getInitials, formatDateGB, qualLabel } from '../lib/data.js'
+import { getInitials, formatDateGB, qualLabel, feeBandPiMin, feeBandLabel, entityTypeLabel, formatGBP, isMatch, matchReasons, verificationChecklist, UK_REGIONS, QUALIFICATION_TYPES, AVAILABILITY_OPTIONS, FEE_BANDS } from '../lib/data.js'
 import LinkedInImport from '../components/LinkedInImport.jsx'
 import DocumentLink from '../components/DocumentLink.jsx'
 import ChangePassword from '../components/ChangePassword.jsx'
 
 const TABS = [
   { id: 'pending', label: '⏳ Pending Surveyors' },
+  { id: 'match', label: '🔎 Match Surveyors' },
+  { id: 'followup', label: '📣 Follow-up' },
   { id: 'surveyors', label: '📋 All Surveyors' },
   { id: 'councils', label: '🏛 Councils' },
   { id: 'requests', label: '📑 All Requests' },
   { id: 'documents', label: '📄 Document Review' },
+  { id: 'entities', label: '🏢 Entities' },
   { id: 'insurance', label: '🛡 Insurance' },
   { id: 'linkedin', label: '📥 LinkedIn Pool' },
   { id: 'feedback', label: '💬 Beta Feedback' },
@@ -77,6 +80,8 @@ export default function AdminDashboard() {
   const pendingSurveyors = (allProfiles || []).filter(p => p.role === 'surveyor' && p.status === 'pending')
   const allSurveyors = users.filter(u => u.role === 'surveyor')
   const allCouncils = users.filter(u => u.role === 'council')
+  const survById = new Map(allSurveyors.map(s => [s.id, s]))
+  const entitySubmitted = allSurveyors.filter(s => s.entityType)
 
   return (
     <div className="container">
@@ -126,6 +131,10 @@ export default function AdminDashboard() {
               )}
             </div>
           )}
+
+          {tab === 'match' && <MatchTab surveyors={allSurveyors} requests={requests} />}
+
+          {tab === 'followup' && <FollowUpTab surveyors={allSurveyors} />}
 
           {tab === 'surveyors' && (
             <div className="card">
@@ -202,6 +211,16 @@ export default function AdminDashboard() {
             </div>
           )}
 
+          {tab === 'entities' && (
+            <div className="card">
+              <div className="card-header">
+                <span className="card-title">Business entities ({entitySubmitted.length})</span>
+              </div>
+              {entitySubmitted.length === 0 ? <Empty icon="🏢" title="No entity details submitted yet" />
+                : entitySubmitted.map(s => <EntityRow key={s.id} s={s} />)}
+            </div>
+          )}
+
           {tab === 'insurance' && (
             <div className="card">
               <div className="card-header">
@@ -209,7 +228,7 @@ export default function AdminDashboard() {
                 <button className="btn btn-outline btn-sm" onClick={loadInsurance}>Refresh</button>
               </div>
               {!insurancePolicies?.length ? <Empty icon="🛡" title="No insurance submitted yet" />
-                : insurancePolicies.map(p => <InsuranceRow key={p.surveyor_id} p={p} onChanged={loadInsurance} />)}
+                : insurancePolicies.map(p => <InsuranceRow key={p.surveyor_id} p={p} feeBand={survById.get(p.surveyor_id)?.feeBand} onChanged={loadInsurance} />)}
             </div>
           )}
 
@@ -324,9 +343,244 @@ function DocumentRow({ d, onChanged }) {
   )
 }
 
-function InsuranceRow({ p, onChanged }) {
+function MatchTab({ surveyors, requests }) {
+  const openJobs = requests.filter(r => r.status === 'open')
+  const [jobId, setJobId] = useState('')
+  const [search, setSearch] = useState('')
+  const [qual, setQual] = useState('')
+  const [region, setRegion] = useState('')
+  const [coverage, setCoverage] = useState('')
+  const [availability, setAvailability] = useState('')
+  const [feeBand, setFeeBand] = useState('')
+  const [readyOnly, setReadyOnly] = useState(false)
+
+  const job = openJobs.find(j => j.id === jobId) || null
+  const effectiveQual = qual || (job ? job.type : '')
+
+  let list = surveyors.slice()
+  if (search) {
+    const q = search.toLowerCase()
+    list = list.filter(s => (s.name || '').toLowerCase().includes(q) || (s.tradingName || '').toLowerCase().includes(q))
+  }
+  if (effectiveQual) list = list.filter(s => (s.qualifications || []).includes(effectiveQual))
+  if (region) list = list.filter(s => s.region === region)
+  if (coverage) {
+    const c = coverage.trim().toUpperCase()
+    list = list.filter(s => (s.coverageAreas || []).some(a => a.toUpperCase().startsWith(c)) || (s.region || '').toUpperCase().includes(c))
+  }
+  if (availability) list = list.filter(s => (s.availabilityStatus || 'available') === availability)
+  if (feeBand) list = list.filter(s => (s.feeBand || 'under_100k') === feeBand)
+  if (readyOnly) list = list.filter(s => s.workReady)
+
+  list.sort((a, b) => {
+    if (job) { const m = (isMatch(job, b) ? 1 : 0) - (isMatch(job, a) ? 1 : 0); if (m) return m }
+    return (b.workReady ? 1 : 0) - (a.workReady ? 1 : 0)
+  })
+
+  return (
+    <div className="card">
+      <div className="card-header"><span className="card-title">Match surveyors to a job</span></div>
+      <div className="form-group">
+        <label>Match against an open job (optional)</label>
+        <select value={jobId} onChange={e => setJobId(e.target.value)}>
+          <option value="">— Free search (no job) —</option>
+          {openJobs.map(j => <option key={j.id} value={j.id}>{j.title} · {qualLabel(j.type)} · {j.region}</option>)}
+        </select>
+      </div>
+      {job && (
+        <div style={{ marginBottom: '12px', padding: '10px 12px', background: '#ebf8ff', border: '1px solid #bee3f8', borderRadius: '8px', fontSize: '13px' }}>
+          Showing surveyors for <strong>{qualLabel(job.type)}</strong> in <strong>{job.region}</strong>
+          {job.postcode ? ` (${job.postcode})` : ''}. Best matches first — qualification is filtered to the job.
+        </div>
+      )}
+      <div className="filter-bar">
+        <input type="text" placeholder="Search name…" value={search} onChange={e => setSearch(e.target.value)} />
+        <select value={qual} onChange={e => setQual(e.target.value)}>
+          <option value="">{job ? `Qual: ${qualLabel(job.type)} (job)` : 'All qualifications'}</option>
+          {QUALIFICATION_TYPES.map(q => <option key={q.id} value={q.id}>{q.label}</option>)}
+        </select>
+        <select value={region} onChange={e => setRegion(e.target.value)}>
+          <option value="">All regions</option>
+          {UK_REGIONS.map(r => <option key={r} value={r}>{r}</option>)}
+        </select>
+        <input type="text" placeholder="Coverage e.g. BN" value={coverage} onChange={e => setCoverage(e.target.value)} />
+        <select value={availability} onChange={e => setAvailability(e.target.value)}>
+          <option value="">Any availability</option>
+          {AVAILABILITY_OPTIONS.map(a => <option key={a.id} value={a.id}>{a.label}</option>)}
+        </select>
+        <select value={feeBand} onChange={e => setFeeBand(e.target.value)}>
+          <option value="">Any fee band</option>
+          {FEE_BANDS.map(b => <option key={b.id} value={b.id}>{b.label}</option>)}
+        </select>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px' }}>
+          <input type="checkbox" checked={readyOnly} onChange={e => setReadyOnly(e.target.checked)} /> Verified only
+        </label>
+      </div>
+      <p style={{ fontSize: '12px', color: 'var(--text-light)', margin: '0 0 8px' }}>{list.length} surveyor{list.length !== 1 ? 's' : ''}</p>
+      {list.length === 0 ? <Empty icon="🔍" title="No surveyors match" />
+        : list.map(s => <MatchResultRow key={s.id} s={s} job={job} />)}
+    </div>
+  )
+}
+
+function shareJobMailto(s, job) {
+  const subject = job ? `Survey opportunity: ${job.title}` : 'Survey opportunity via Surveyors UK'
+  const lines = [`Hi ${s.name || ''},`, '']
+  if (job) {
+    lines.push('A job has come up that fits your profile:', '',
+      `• ${job.title}`, `• Type: ${qualLabel(job.type)}`,
+      `• Region: ${job.region}${job.postcode ? ' (' + job.postcode + ')' : ''}`)
+    if (job.deadline) lines.push(`• Deadline: ${formatDateGB(job.deadline)}`)
+    if (job.budget) lines.push(`• Budget: ${job.budget}`)
+    lines.push('', 'Log in to view and submit a quote.', '', 'Thanks')
+  } else {
+    lines.push('Get in touch about upcoming survey work.', '', 'Thanks')
+  }
+  return `mailto:${s.email || ''}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(lines.join('\n'))}`
+}
+
+function MatchResultRow({ s, job }) {
+  const reasons = job ? matchReasons(job, s) : []
+  const matches = job ? isMatch(job, s) : false
+  const avail = (AVAILABILITY_OPTIONS.find(a => a.id === (s.availabilityStatus || 'available')) || {}).label
+  return (
+    <div className="request-card">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: '12px' }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <h4 style={{ margin: 0 }}>{s.name}</h4>
+            {s.tradingName && <span style={{ fontSize: '12px', color: 'var(--text-light)' }}>{s.tradingName}</span>}
+            {s.workReady
+              ? <span className="badge badge-verified">verified</span>
+              : <span className="badge badge-pending">unverified</span>}
+            {job && (matches
+              ? <span className="badge badge-verified">✓ matches job</span>
+              : <span className="badge badge-closed">outside criteria</span>)}
+          </div>
+          <div className="request-meta" style={{ margin: '6px 0' }}>
+            <span>📍 {s.region || '—'}</span>
+            {(s.coverageAreas || []).length > 0 && <span>🗺 {s.coverageAreas.join(', ')}</span>}
+            {avail && <span>{avail}</span>}
+            <span>Fee band {feeBandLabel(s.feeBand)}</span>
+            {s.acceptsEmergency && <span className="badge badge-qual">24h emergencies</span>}
+          </div>
+          <div style={{ margin: '6px 0' }}>
+            {(s.qualifications || []).map(q => <span key={q} className="badge badge-qual">{qualLabel(q)}</span>)}
+          </div>
+          {reasons.length > 0 && (
+            <div style={{ fontSize: '12px', color: 'var(--success)' }}>Why: {reasons.join(' · ')}</div>
+          )}
+          {!s.workReady && (
+            <div style={{ fontSize: '12px', color: 'var(--text-light)' }}>
+              Insurance: {s.insuranceStatus || 'none'} · Entity: {s.entityStatus || 'pending'}
+            </div>
+          )}
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', flexShrink: 0 }}>
+          <a className="btn btn-outline btn-sm" href={`mailto:${s.email || ''}`}>✉️ Email</a>
+          {job && <a className="btn btn-primary btn-sm" href={shareJobMailto(s, job)}>Share job</a>}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function followUpMailto(s, missing) {
+  const subject = 'Finish your Surveyors UK verification'
+  const lines = [`Hi ${s.name || ''},`, '', "You're almost set up. Before you can take on work, we still need:", '']
+  missing.forEach(m => lines.push(`• ${m.label} — ${m.detail}`))
+  lines.push('', 'Log in and head to the Verification tab to complete these.', '', 'Thanks')
+  return `mailto:${s.email || ''}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(lines.join('\n'))}`
+}
+
+function FollowUpTab({ surveyors }) {
+  const unverified = surveyors.filter(s => !s.workReady)
+  return (
+    <div className="card">
+      <div className="card-header"><span className="card-title">Surveyors to follow up ({unverified.length})</span></div>
+      <p style={{ fontSize: '13px', color: 'var(--text-light)', margin: '0 0 12px' }}>
+        These surveyors can't take on work yet. Here's exactly what each still needs — nudge them to finish.
+      </p>
+      {unverified.length === 0 ? <Empty icon="✅" title="Everyone's verified" />
+        : unverified.map(s => <UnverifiedRow key={s.id} s={s} />)}
+    </div>
+  )
+}
+
+function UnverifiedRow({ s }) {
+  const steps = verificationChecklist(s)
+  const missing = steps.filter(x => !x.done)
+  return (
+    <div className="request-card">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: '12px' }}>
+        <div style={{ flex: 1 }}>
+          <h4 style={{ margin: 0 }}>{s.name} <span style={{ fontSize: '12px', color: 'var(--text-light)', fontWeight: 400 }}>{s.email}</span></h4>
+          <ul className="qual-list" style={{ marginTop: '8px' }}>
+            {steps.map(x => (
+              <li key={x.key} className="qual-item" style={{ padding: '6px 0' }}>
+                <div className="qual-info">
+                  <span>{x.done ? '✅' : '⬜'}</span>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: '13px' }}>{x.label}</div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-light)' }}>{x.detail}</div>
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+        <a className="btn btn-primary btn-sm" href={followUpMailto(s, missing)} style={{ flexShrink: 0 }}>✉️ Email what's needed</a>
+      </div>
+    </div>
+  )
+}
+
+function EntityRow({ s }) {
+  const { setEntityStatus } = useApp()
+  const chUrl = s.companyNumber
+    ? `https://find-and-update.company-information.service.gov.uk/company/${encodeURIComponent(s.companyNumber)}`
+    : null
+  return (
+    <div className="request-card">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
+        <div>
+          <h4>{s.tradingName || s.name}</h4>
+          <div className="request-meta" style={{ margin: '6px 0' }}>
+            <span>{s.name}</span>
+            <span>{s.email}</span>
+            <span className="badge badge-qual">{entityTypeLabel(s.entityType)}</span>
+            {s.companyNumber && <span>Co. No. {s.companyNumber}</span>}
+            <span>Fee band {feeBandLabel(s.feeBand)} → PI min {formatGBP(feeBandPiMin(s.feeBand))}</span>
+            {s.workReady && <span className="badge badge-verified">work-ready</span>}
+          </div>
+          {chUrl && (
+            <div style={{ fontSize: '13px' }}>
+              <a href={chUrl} target="_blank" rel="noreferrer">Check on Companies House ↗</a>
+            </div>
+          )}
+        </div>
+        <span className={`badge badge-${s.entityStatus}`}>{s.entityStatus}</span>
+      </div>
+      {s.entityStatus !== 'verified' ? (
+        <div style={{ marginTop: '12px', display: 'flex', gap: '8px' }}>
+          <button className="btn btn-primary btn-sm" onClick={() => setEntityStatus(s.id, 'verified')}>Verify entity</button>
+          <button className="btn btn-danger btn-sm" onClick={() => setEntityStatus(s.id, 'rejected')}>Reject</button>
+        </div>
+      ) : (
+        <div style={{ marginTop: '8px' }}>
+          <button className="btn btn-outline btn-sm" onClick={() => setEntityStatus(s.id, 'pending')}>Unverify</button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function InsuranceRow({ p, feeBand, onChanged }) {
   const { setInsuranceStatus } = useApp()
   const owner = p.profiles
+  const required = feeBandPiMin(feeBand)
+  const cover = Number(p.coverage_amount || 0)
+  const belowMin = cover > 0 && cover < required
   return (
     <div className="request-card">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
@@ -336,9 +590,15 @@ function InsuranceRow({ p, onChanged }) {
             <span>{owner?.name || '—'}</span>
             <span>{owner?.email || '—'}</span>
             {p.policy_number && <span>Policy {p.policy_number}</span>}
-            {p.coverage_amount && <span>£{Number(p.coverage_amount).toLocaleString()} cover</span>}
+            {p.coverage_amount && <span>{formatGBP(p.coverage_amount)} cover</span>}
+            <span>Required: {formatGBP(required)}</span>
             {p.expiry_date && <span>Expires {formatDateGB(p.expiry_date)}</span>}
           </div>
+          {belowMin && (
+            <div style={{ fontSize: '13px', color: 'var(--danger)', fontWeight: 600 }}>
+              ⚠ Cover is below the {formatGBP(required)} minimum for this surveyor's fee band.
+            </div>
+          )}
           <div style={{ fontSize: '13px', color: 'var(--text-light)' }}>
             {p.file_name || '—'}{' '}
             {p.file_path && <DocumentLink filePath={p.file_path} label="(open)" />}

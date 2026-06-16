@@ -83,7 +83,7 @@ export default function RequestCard({ request: r, compact, onView, showQuoteActi
           </span>
           <div style={{ display: 'flex', gap: '8px' }}>
             <button className="btn btn-outline btn-sm" onClick={() => onView?.(r)}>View Details</button>
-            {showQuoteAction && currentUser?.role === 'surveyor' && currentUser.status === 'active' && isOpen && !myQuote && (
+            {showQuoteAction && currentUser?.role === 'surveyor' && currentUser.workReady && isOpen && !myQuote && (
               <button className="btn btn-primary btn-sm" onClick={() => setShowQuote(true)}>Submit Quote</button>
             )}
             {showQuoteAction && currentUser?.role === 'surveyor' && myQuote && (

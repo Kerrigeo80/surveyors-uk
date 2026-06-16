@@ -29,6 +29,17 @@ function flattenProfile(profile, surveyor, council, landlord) {
       insuranceStatus: surveyor.insurance_status || 'none',
       insuranceExpiry: surveyor.insurance_expiry || null,
       insuranceCoverage: surveyor.insurance_coverage || null,
+      // Entity / liability verification
+      entityType: surveyor.entity_type || '',
+      tradingName: surveyor.trading_name || '',
+      companyNumber: surveyor.company_number || '',
+      companyName: surveyor.company_name || '',
+      companyStatus: surveyor.company_status || '',
+      vatNumber: surveyor.vat_number || '',
+      feeBand: surveyor.fee_band || 'under_100k',
+      entityStatus: surveyor.entity_status || 'pending',
+      liabilityDeclaredAt: surveyor.liability_declared_at || null,
+      workReady: surveyor.work_ready || false,
     }
   }
   if (profile.role === 'council' && council) {
@@ -77,6 +88,15 @@ function buildUsersList(profiles, surveyors, councils, landlords, documentsBySur
         insuranceStatus: s?.insurance_status || 'none',
         insuranceExpiry: s?.insurance_expiry || null,
         insuranceCoverage: s?.insurance_coverage || null,
+        entityType: s?.entity_type || '',
+        tradingName: s?.trading_name || '',
+        companyNumber: s?.company_number || '',
+        companyName: s?.company_name || '',
+        companyStatus: s?.company_status || '',
+        feeBand: s?.fee_band || 'under_100k',
+        entityStatus: s?.entity_status || 'pending',
+        liabilityDeclaredAt: s?.liability_declared_at || null,
+        workReady: s?.work_ready || false,
         documents: documentsBySurveyor[p.id] || [],
         reviews,
         reviewCount: reviews.length,
@@ -157,6 +177,7 @@ export function AppProvider({ children }) {
   const [properties, setProperties] = useState([])
   const [notifications, setNotifications] = useState([])
   const [conversations, setConversations] = useState([])
+  const [offers, setOffers] = useState([])
   const [toasts, setToasts] = useState([])
   const [ready, setReady] = useState(false)
   const mountedRef = useRef(true)
@@ -171,7 +192,7 @@ export function AppProvider({ children }) {
   const loadAll = useCallback(async (userId) => {
     if (!userId) {
       setCurrentUser(null); setUsers([]); setRequests([]); setReports([])
-      setNotifications([]); setConversations([])
+      setNotifications([]); setConversations([]); setOffers([])
       return
     }
     const [
@@ -196,6 +217,7 @@ export function AppProvider({ children }) {
     const [
       { data: propertiesData }, { data: notificationsData }, { data: reviews },
       { data: myInsurance }, { data: convs }, { data: msgs }, { data: reportsData },
+      { data: offersData },
     ] = await Promise.all([
       supabase.from('properties').select('*').order('created_at', { ascending: false }),
       supabase.from('notifications').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(50),
@@ -205,6 +227,8 @@ export function AppProvider({ children }) {
       supabase.from('messages').select('*').order('created_at', { ascending: true }),
       // RLS scopes this to the org's own reports (admin sees all).
       supabase.from('hazard_reports').select('*').order('created_at', { ascending: false }),
+      // RLS scopes offers to the surveyor they're for / the council that sent them.
+      supabase.from('offers').select('*').order('created_at', { ascending: false }),
     ])
 
     if (!mountedRef.current) return
@@ -262,6 +286,11 @@ export function AppProvider({ children }) {
     setProperties(propertiesData || [])
     setNotifications(notificationsData || [])
     setConversations(conversationsData)
+    setOffers((offersData || []).map(o => ({
+      id: o.id, requestId: o.request_id, surveyorId: o.surveyor_id,
+      fee: o.fee, message: o.message, status: o.status,
+      createdAt: o.created_at, respondedAt: o.responded_at,
+    })))
   }, [])
 
   // ── Wire up auth session ──
@@ -430,6 +459,13 @@ export function AppProvider({ children }) {
       if (patch.availabilityStatus !== undefined) survPatch.availability_status = patch.availabilityStatus
       if (patch.availableFrom !== undefined) survPatch.available_from = patch.availableFrom || null
       if (patch.acceptsEmergency !== undefined) survPatch.accepts_emergency = patch.acceptsEmergency
+      // Entity / liability (entity_status + company_* are admin-only, enforced by DB trigger)
+      if (patch.entityType !== undefined) survPatch.entity_type = patch.entityType || null
+      if (patch.tradingName !== undefined) survPatch.trading_name = patch.tradingName || ''
+      if (patch.companyNumber !== undefined) survPatch.company_number = patch.companyNumber || null
+      if (patch.vatNumber !== undefined) survPatch.vat_number = patch.vatNumber || null
+      if (patch.feeBand !== undefined) survPatch.fee_band = patch.feeBand
+      if (patch.liabilityDeclaredAt !== undefined) survPatch.liability_declared_at = patch.liabilityDeclaredAt
       if (Object.keys(survPatch).length) {
         await supabase.from('surveyors').update(survPatch).eq('profile_id', currentUser.id)
       }
@@ -503,6 +539,15 @@ export function AppProvider({ children }) {
     const { error } = await supabase.from('insurance_policies').update({ status }).eq('surveyor_id', surveyorId)
     if (error) { showToast(error.message, 'error'); return }
     showToast(`Insurance ${status}`, 'success')
+    await loadAll(currentUser?.id)
+  }, [currentUser, loadAll, showToast])
+
+  // Admin verifies/rejects a surveyor's trading entity. The DB trigger only lets
+  // an admin set this; the work_ready flag then recomputes automatically.
+  const setEntityStatus = useCallback(async (surveyorId, status) => {
+    const { error } = await supabase.from('surveyors').update({ entity_status: status }).eq('profile_id', surveyorId)
+    if (error) { showToast(error.message, 'error'); return }
+    showToast(`Entity ${status}`, 'success')
     await loadAll(currentUser?.id)
   }, [currentUser, loadAll, showToast])
 
@@ -672,6 +717,41 @@ export function AppProvider({ children }) {
     await loadAll(currentUser?.id)
   }, [currentUser, loadAll, showToast])
 
+  // ── Direct offers (council → surveyor at a set fee) ──
+  const createOffer = useCallback(async ({ requestId, surveyorId, fee, message }) => {
+    if (!currentUser) return false
+    const { error } = await supabase.from('offers').insert({
+      request_id: requestId, surveyor_id: surveyorId,
+      fee: fee ? Number(fee) : null, message: message || '',
+    })
+    if (error) { showToast(error.message, 'error'); return false }
+    showToast('Offer sent', 'success')
+    await loadAll(currentUser.id)
+    return true
+  }, [currentUser, loadAll, showToast])
+
+  const withdrawOffer = useCallback(async (offerId) => {
+    const { error } = await supabase.from('offers').update({ status: 'withdrawn' }).eq('id', offerId)
+    if (error) { showToast(error.message, 'error'); return }
+    showToast('Offer withdrawn')
+    await loadAll(currentUser?.id)
+  }, [currentUser, loadAll, showToast])
+
+  const declineOffer = useCallback(async (offerId) => {
+    const { error } = await supabase.from('offers').update({ status: 'declined', responded_at: new Date().toISOString() }).eq('id', offerId)
+    if (error) { showToast(error.message, 'error'); return }
+    showToast('Offer declined')
+    await loadAll(currentUser?.id)
+  }, [currentUser, loadAll, showToast])
+
+  const acceptOffer = useCallback(async (offerId) => {
+    const { error } = await supabase.rpc('accept_offer', { p_offer_id: offerId })
+    if (error) { showToast(error.message, 'error'); return false }
+    showToast('Offer accepted — the job is yours', 'success')
+    await loadAll(currentUser?.id)
+    return true
+  }, [currentUser, loadAll, showToast])
+
   const submitReview = useCallback(async (request, { rating, comment }) => {
     if (!currentUser) return false
     const wonQuote = request.quotes.find(q => q.status === 'won')
@@ -726,25 +806,27 @@ export function AppProvider({ children }) {
   const refresh = useCallback(() => loadAll(currentUser?.id), [currentUser, loadAll])
 
   const value = useMemo(() => ({
-    session, currentUser, users, requests, reports, properties, notifications, conversations, toasts, ready,
+    session, currentUser, users, requests, reports, properties, notifications, conversations, offers, toasts, ready,
     register, login, demoLogin, logout, changePassword, requestPasswordReset,
     updateCurrentUser, addDocument, createRequest, closeRequest, dismissReport,
     createProperty, deleteProperty,
     submitQuote, withdrawQuote, awardQuote, updateRequestStatus, submitReview,
+    createOffer, withdrawOffer, declineOffer, acceptOffer,
     setAwaabsMilestone,
-    submitInsurance, setInsuranceStatus,
+    submitInsurance, setInsuranceStatus, setEntityStatus,
     sendMessage, markConversationRead,
     setSurveyorStatus, setDocumentStatus,
     markNotificationRead, markAllNotificationsRead, refreshNotifications,
     refresh,
     showToast,
-  }), [session, currentUser, users, requests, reports, properties, notifications, conversations, toasts, ready,
+  }), [session, currentUser, users, requests, reports, properties, notifications, conversations, offers, toasts, ready,
        register, login, demoLogin, logout, changePassword, requestPasswordReset,
        updateCurrentUser, addDocument, createRequest, closeRequest, dismissReport,
        createProperty, deleteProperty,
        submitQuote, withdrawQuote, awardQuote, updateRequestStatus, submitReview,
+       createOffer, withdrawOffer, declineOffer, acceptOffer,
        setAwaabsMilestone,
-       submitInsurance, setInsuranceStatus,
+       submitInsurance, setInsuranceStatus, setEntityStatus,
        sendMessage, markConversationRead,
        setSurveyorStatus, setDocumentStatus,
        markNotificationRead, markAllNotificationsRead, refreshNotifications,
@@ -753,6 +835,7 @@ export function AppProvider({ children }) {
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useApp() {
   const ctx = useContext(AppContext)
   if (!ctx) throw new Error('useApp must be used within AppProvider')

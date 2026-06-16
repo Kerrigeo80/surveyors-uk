@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Navigate, useNavigate, useLocation } from 'react-router-dom'
 import { useApp } from '../lib/AppContext.jsx'
-import { UK_REGIONS, QUALIFICATION_TYPES, PROPERTY_TYPES, AVAILABILITY_OPTIONS, getInitials, formatDateGB, qualLabel, totalUnreadMessages, isMatch, urgencyRank } from '../lib/data.js'
+import { UK_REGIONS, QUALIFICATION_TYPES, PROPERTY_TYPES, AVAILABILITY_OPTIONS, ENTITY_TYPES, FEE_BANDS, getInitials, formatDateGB, qualLabel, totalUnreadMessages, isMatch, urgencyRank, verificationChecklist, feeBandPiMin, feeBandLabel, entityTypeLabel, formatGBP } from '../lib/data.js'
 import RequestCard from '../components/RequestCard.jsx'
 import RequestDetailModal from '../components/RequestDetailModal.jsx'
 import UploadQualificationModal from '../components/UploadQualificationModal.jsx'
@@ -12,19 +12,22 @@ import ChangePassword from '../components/ChangePassword.jsx'
 
 const TABS = [
   { id: 'overview', label: '📊 Overview' },
+  { id: 'verification', label: '✅ Verification' },
   { id: 'qualifications', label: '📄 My Qualifications' },
   { id: 'requests', label: '📋 Available Requests' },
   { id: 'my-interests', label: '⭐ My Quotes' },
+  { id: 'my-offers', label: '📨 Job Offers' },
   { id: 'messages', label: '💬 Messages' },
   { id: 'profile', label: '⚙️ Edit Profile' },
 ]
 
 export default function SurveyorDashboard() {
-  const { currentUser, requests, conversations, logout } = useApp()
+  const { currentUser, requests, conversations, offers, logout } = useApp()
   const navigate = useNavigate()
   const location = useLocation()
   const [tab, setTab] = useState(() => new URLSearchParams(window.location.search).get('tab') || 'overview')
   const unreadMessages = totalUnreadMessages(conversations, currentUser?.id)
+  const openOffers = (offers || []).filter(o => o.surveyorId === currentUser?.id && o.status === 'offered').length
 
   // Follow ?tab= changes (e.g. clicking a message notification while already here).
   useEffect(() => {
@@ -62,6 +65,9 @@ export default function SurveyorDashboard() {
                   {t.id === 'messages' && unreadMessages > 0 && (
                     <span className="badge" style={{ marginLeft: '6px', background: 'var(--accent)', color: 'var(--primary)' }}>{unreadMessages}</span>
                   )}
+                  {t.id === 'my-offers' && openOffers > 0 && (
+                    <span className="badge" style={{ marginLeft: '6px', background: 'var(--accent)', color: 'var(--primary)' }}>{openOffers}</span>
+                  )}
                 </a>
               ))}
               <a onClick={() => { logout(); navigate('/') }} style={{ color: 'var(--danger)' }}>🚪 Sign Out</a>
@@ -70,11 +76,21 @@ export default function SurveyorDashboard() {
         </div>
 
         <div className="main-content">
-          {currentUser.status === 'pending' && (
-            <div className="card" style={{ background: '#fefcbf', borderLeft: '4px solid #d69e2e' }}>
-              <strong>⏳ Verification pending.</strong> Your account is awaiting admin review.
-              You can browse and update your profile, but expressing interest is disabled
-              until your qualifications are verified.
+          {currentUser.status !== 'rejected' && !currentUser.workReady && (() => {
+            const remaining = verificationChecklist(currentUser).filter(s => !s.done).length
+            return (
+              <div className="card" style={{ background: '#fefcbf', borderLeft: '4px solid #d69e2e', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                <div>
+                  <strong>⏳ Not yet verified to take work.</strong> You have {remaining} step{remaining !== 1 ? 's' : ''} left
+                  before you can quote or accept jobs. You can still browse and update your profile.
+                </div>
+                <button className="btn btn-primary btn-sm" onClick={() => setTab('verification')}>Complete verification</button>
+              </div>
+            )
+          })()}
+          {currentUser.workReady && (
+            <div className="card" style={{ background: 'var(--success-bg)', borderLeft: '4px solid var(--success)' }}>
+              <strong>✅ Verified.</strong> You're cleared to quote on and accept jobs.
             </div>
           )}
           {currentUser.status === 'rejected' && (
@@ -91,9 +107,11 @@ export default function SurveyorDashboard() {
               onSeeAll={() => setTab('requests')}
             />
           )}
+          {tab === 'verification' && <VerificationTab user={currentUser} onGoTab={setTab} />}
           {tab === 'qualifications' && <QualificationsTab user={currentUser} onUpload={() => setUploadOpen(true)} />}
           {tab === 'requests' && <RequestsTab onView={setDetailReq} />}
           {tab === 'my-interests' && <MyInterestsTab myInterests={myInterests} onView={setDetailReq} />}
+          {tab === 'my-offers' && <OffersTab user={currentUser} />}
           {tab === 'messages' && <Messages />}
           {tab === 'profile' && <ProfileTab />}
         </div>
@@ -162,6 +180,180 @@ function OverviewTab({ user, matching, myInterests, onView, onSeeAll }) {
         )}
       </div>
     </>
+  )
+}
+
+function GateRow({ done, label, detail, action }) {
+  return (
+    <li className="qual-item">
+      <div className="qual-info">
+        <span style={{ fontSize: '18px' }}>{done ? '✅' : '⬜'}</span>
+        <div>
+          <div style={{ fontWeight: 600, fontSize: '14px' }}>{label}</div>
+          <div style={{ fontSize: '12px', color: 'var(--text-light)' }}>{detail}</div>
+        </div>
+      </div>
+      {action}
+    </li>
+  )
+}
+
+function VerificationTab({ user, onGoTab }) {
+  const steps = verificationChecklist(user)
+  const doneCount = steps.filter(s => s.done).length
+  return (
+    <>
+      <div className="card" style={{ marginBottom: '20px' }}>
+        <div className="card-header">
+          <span className="card-title">Verification — {doneCount}/{steps.length} complete</span>
+          {user.workReady
+            ? <span className="badge badge-verified">Ready to work</span>
+            : <span className="badge badge-pending">In progress</span>}
+        </div>
+        <p style={{ fontSize: '13px', color: 'var(--text-light)', margin: '0 0 12px' }}>
+          You must clear all four steps before you can quote on or accept jobs. This keeps every job
+          covered by a properly insured, registered surveyor.
+        </p>
+        <ul className="qual-list">
+          {steps.map(s => (
+            <GateRow key={s.key} done={s.done} label={s.label} detail={s.detail}
+              action={(s.key === 'insurance' || s.key === 'qualification') && !s.done
+                ? <button className="btn btn-outline btn-sm" onClick={() => onGoTab('qualifications')}>Go</button>
+                : null} />
+          ))}
+        </ul>
+      </div>
+      <EntityForm user={user} />
+      <LiabilityCard user={user} />
+    </>
+  )
+}
+
+function EntityForm({ user }) {
+  const { updateCurrentUser, showToast } = useApp()
+  const [entityType, setEntityType] = useState(user.entityType || '')
+  const [tradingName, setTradingName] = useState(user.tradingName || '')
+  const [companyNumber, setCompanyNumber] = useState(user.companyNumber || '')
+  const [vatNumber, setVatNumber] = useState(user.vatNumber || '')
+  const [feeBand, setFeeBand] = useState(user.feeBand || 'under_100k')
+  const [saving, setSaving] = useState(false)
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    if (!entityType) { showToast('Choose how you trade', 'error'); return }
+    if (entityType === 'limited_company' && !companyNumber.trim()) {
+      showToast('Company number is required for a limited company', 'error'); return
+    }
+    setSaving(true)
+    await updateCurrentUser({
+      entityType, tradingName,
+      companyNumber: entityType === 'limited_company' ? companyNumber.trim() : '',
+      vatNumber, feeBand,
+    })
+    setSaving(false)
+    showToast('Business details saved — awaiting verification', 'success')
+  }
+
+  const badge = user.entityStatus === 'verified'
+    ? <span className="badge badge-verified">verified</span>
+    : user.entityStatus === 'rejected'
+      ? <span className="badge badge-rejected">rejected</span>
+      : <span className="badge badge-pending">{user.entityType ? 'pending' : 'not submitted'}</span>
+
+  return (
+    <div className="card" style={{ marginBottom: '20px' }}>
+      <div className="card-header">
+        <span className="card-title">🏢 Your business entity</span>
+        {badge}
+      </div>
+      <p style={{ fontSize: '13px', color: 'var(--text-light)', margin: '0 0 12px' }}>
+        You take this work on as your own entity, so liability sits with you — not the council or the
+        platform. Tell us how you trade.
+      </p>
+      <form onSubmit={handleSubmit}>
+        <div className="form-row">
+          <div className="form-group">
+            <label>How do you trade?</label>
+            <select value={entityType} onChange={e => setEntityType(e.target.value)} required>
+              <option value="">Select...</option>
+              {ENTITY_TYPES.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+            </select>
+          </div>
+          <div className="form-group">
+            <label>Annual fee income (sets your insurance minimum)</label>
+            <select value={feeBand} onChange={e => setFeeBand(e.target.value)}>
+              {FEE_BANDS.map(b => <option key={b.id} value={b.id}>{b.label} → min {formatGBP(b.piMin)} PI</option>)}
+            </select>
+          </div>
+        </div>
+        <div className="form-group">
+          <label>Trading / business name</label>
+          <input type="text" value={tradingName} onChange={e => setTradingName(e.target.value)} placeholder="e.g. J. Walker Surveying Ltd" />
+        </div>
+        {entityType === 'limited_company' ? (
+          <div className="form-row">
+            <div className="form-group">
+              <label>Companies House number</label>
+              <input type="text" value={companyNumber} onChange={e => setCompanyNumber(e.target.value)} placeholder="e.g. 09876543" />
+            </div>
+            <div className="form-group">
+              <label>VAT number (optional)</label>
+              <input type="text" value={vatNumber} onChange={e => setVatNumber(e.target.value)} placeholder="GB123456789" />
+            </div>
+          </div>
+        ) : (
+          <div className="form-group">
+            <label>VAT number (optional)</label>
+            <input type="text" value={vatNumber} onChange={e => setVatNumber(e.target.value)} placeholder="GB123456789" />
+          </div>
+        )}
+        {user.entityStatus === 'verified' && user.companyName && (
+          <p style={{ fontSize: '12px', color: 'var(--text-light)' }}>
+            Verified as <strong>{user.companyName}</strong>{user.companyStatus ? ` (${user.companyStatus})` : ''}.
+          </p>
+        )}
+        <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Saving…' : 'Save business details'}</button>
+      </form>
+    </div>
+  )
+}
+
+function LiabilityCard({ user }) {
+  const { updateCurrentUser, showToast } = useApp()
+  const [agreed, setAgreed] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const signed = !!user.liabilityDeclaredAt
+
+  const sign = async () => {
+    if (!agreed) return
+    setSaving(true)
+    await updateCurrentUser({ liabilityDeclaredAt: new Date().toISOString() })
+    setSaving(false)
+    showToast('Declaration signed', 'success')
+  }
+
+  return (
+    <div className="card" style={{ marginBottom: '20px' }}>
+      <div className="card-header">
+        <span className="card-title">📝 Liability declaration</span>
+        {signed ? <span className="badge badge-verified">signed</span> : <span className="badge badge-pending">required</span>}
+      </div>
+      {signed ? (
+        <p style={{ fontSize: '13px', color: 'var(--text-light)' }}>
+          Signed on {formatDateGB(user.liabilityDeclaredAt)}. You've confirmed you operate as your own
+          insured entity and accept liability for the work you take on.
+        </p>
+      ) : (
+        <>
+          <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', fontSize: '13px', margin: '4px 0 14px' }}>
+            <input type="checkbox" checked={agreed} onChange={e => setAgreed(e.target.checked)} style={{ marginTop: '3px' }} />
+            <span>I confirm I take on work through my own registered entity, carry my own valid Professional
+              Indemnity insurance, and accept full professional liability for the work I deliver through this platform.</span>
+          </label>
+          <button className="btn btn-primary" disabled={!agreed || saving} onClick={sign}>{saving ? 'Signing…' : 'Sign declaration'}</button>
+        </>
+      )}
+    </div>
   )
 }
 
@@ -332,6 +524,67 @@ function RequestsTab({ onView }) {
         </div>
       ) : (
         filtered.map(r => <RequestCard key={r.id} request={r} onView={onView} />)
+      )}
+    </div>
+  )
+}
+
+function OffersTab({ user }) {
+  const { offers, requests, acceptOffer, declineOffer } = useApp()
+  const reqById = new Map(requests.map(r => [r.id, r]))
+  const mine = offers.filter(o => o.surveyorId === user.id)
+  const open = mine.filter(o => o.status === 'offered')
+  const past = mine.filter(o => o.status !== 'offered')
+
+  return (
+    <div className="card">
+      <div className="card-header"><span className="card-title">Direct job offers</span></div>
+      <p style={{ fontSize: '13px', color: 'var(--text-light)', margin: '0 0 12px' }}>
+        Councils can offer you a job directly at a set fee. Accepting awards the job to you straight away.
+      </p>
+      {!user.workReady && (
+        <div style={{ marginBottom: '12px', padding: '10px 12px', background: '#fefcbf', border: '1px solid #f6e05e', borderRadius: 'var(--radius)', fontSize: '13px' }}>
+          You'll need to finish your verification before you can accept an offer.
+        </div>
+      )}
+      {open.length === 0 ? (
+        <div className="empty-state"><div className="empty-icon">📨</div><h3>No open offers</h3><p>Direct offers from councils will appear here.</p></div>
+      ) : open.map(o => {
+        const r = reqById.get(o.requestId)
+        return (
+          <div key={o.id} className="request-card">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
+              <h4>{r?.title || 'Job offer'}</h4>
+              <span className="badge badge-verified">{formatGBP(o.fee)} offered</span>
+            </div>
+            <div className="request-meta" style={{ margin: '6px 0' }}>
+              {r && <span className="badge badge-qual">{qualLabel(r.type)}</span>}
+              {r && <span>📍 {r.region}</span>}
+              {r?.deadline && <span>📅 Due {formatDateGB(r.deadline)}</span>}
+            </div>
+            {o.message && <p style={{ fontSize: '13px', color: 'var(--text-light)' }}>“{o.message}”</p>}
+            <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
+              <button className="btn btn-primary btn-sm" disabled={!user.workReady} onClick={() => acceptOffer(o.id)}>Accept</button>
+              <button className="btn btn-outline btn-sm" onClick={() => declineOffer(o.id)}>Decline</button>
+            </div>
+          </div>
+        )
+      })}
+      {past.length > 0 && (
+        <>
+          <div style={{ margin: '16px 0 8px', fontWeight: 600, fontSize: '13px', color: 'var(--text-light)' }}>Past offers</div>
+          {past.map(o => {
+            const r = reqById.get(o.requestId)
+            return (
+              <div key={o.id} className="request-card" style={{ opacity: 0.75 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span>{r?.title || 'Job offer'} · {formatGBP(o.fee)}</span>
+                  <span className={`badge badge-${o.status === 'accepted' ? 'verified' : 'closed'}`}>{o.status}</span>
+                </div>
+              </div>
+            )
+          })}
+        </>
       )}
     </div>
   )
