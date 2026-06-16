@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Navigate, useNavigate, useLocation } from 'react-router-dom'
 import { useApp } from '../lib/AppContext.jsx'
-import { UK_REGIONS, QUALIFICATION_TYPES, PROPERTY_TYPES, HAZARD_CATEGORIES, HAZARD_SEVERITIES, getInitials, formatDateGB, qualLabel, hazardCategoryLabel, propertyTypeLabel, toDatetimeLocal, isInsured, totalUnreadMessages } from '../lib/data.js'
+import { UK_REGIONS, QUALIFICATION_TYPES, PROPERTY_TYPES, ORG_TYPES, HAZARD_CATEGORIES, HAZARD_SEVERITIES, getInitials, formatDateGB, qualLabel, hazardCategoryLabel, propertyTypeLabel, orgTypeLabel, toDatetimeLocal, isInsured, totalUnreadMessages } from '../lib/data.js'
 import RequestDetailModal from '../components/RequestDetailModal.jsx'
 import ResidentReports from '../components/ResidentReports.jsx'
 import Messages from '../components/Messages.jsx'
@@ -29,6 +29,7 @@ const TABS = [
   { id: 'reports', label: '🧾 Resident Reports' },
   { id: 'my-requests', label: '📋 My Requests' },
   { id: 'create-request', label: '➕ New Request' },
+  { id: 'properties', label: '🏠 My Properties' },
   { id: 'surveyors', label: '🔍 Browse Surveyors' },
   { id: 'messages', label: '💬 Messages' },
   { id: 'profile', label: '⚙️ Edit Profile' },
@@ -66,8 +67,8 @@ export default function CouncilDashboard() {
                 {getInitials(currentUser.councilName || currentUser.name)}
               </div>
               <h3>{currentUser.councilName || currentUser.name}</h3>
-              <p>{currentUser.department || ''}</p>
-              <span className="badge badge-council" style={{ marginTop: '8px' }}>Council</span>
+              <p>{currentUser.department || orgTypeLabel(currentUser.orgType)}</p>
+              <span className="badge badge-council" style={{ marginTop: '8px' }}>{orgTypeLabel(currentUser.orgType)}</span>
             </div>
             <nav className="sidebar-nav">
               {TABS.map(t => (
@@ -91,6 +92,7 @@ export default function CouncilDashboard() {
           {tab === 'reports' && <ResidentReports onCreateJob={(rep) => goCreate(reportToPrefill(rep))} />}
           {tab === 'my-requests' && <MyRequestsTab myReqs={myReqs} onView={setDetailReq} onCreate={() => goCreate()} />}
           {tab === 'create-request' && <CreateRequestTab prefill={prefill} onCreated={() => { setPrefill(null); setTab('my-requests') }} />}
+          {tab === 'properties' && <PropertiesTab />}
           {tab === 'surveyors' && <SurveyorsTab />}
           {tab === 'messages' && <Messages />}
           {tab === 'profile' && <ProfileTab />}
@@ -427,34 +429,134 @@ function SurveyorCard({ s }) {
   )
 }
 
+function PropertiesTab() {
+  const { currentUser, properties, createProperty, deleteProperty } = useApp()
+  const myProperties = properties.filter(p => p.landlord_id === currentUser.id)
+  const [showAdd, setShowAdd] = useState(false)
+  const [form, setForm] = useState({ address: '', postcode: '', region: currentUser.region || '', type: 'residential', units: '', notes: '' })
+  const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }))
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    await createProperty(form)
+    setForm({ address: '', postcode: '', region: currentUser.region || '', type: 'residential', units: '', notes: '' })
+    setShowAdd(false)
+  }
+
+  return (
+    <div className="card">
+      <div className="card-header">
+        <span className="card-title">My Properties ({myProperties.length})</span>
+        <button className="btn btn-primary btn-sm" onClick={() => setShowAdd(s => !s)}>
+          {showAdd ? 'Cancel' : '+ Add Property'}
+        </button>
+      </div>
+      {showAdd && (
+        <form onSubmit={handleSubmit} style={{ background: 'var(--bg)', padding: '16px', borderRadius: 'var(--radius)', marginBottom: '16px' }}>
+          <div className="form-group">
+            <label>Address</label>
+            <input type="text" value={form.address} onChange={set('address')} placeholder="Full address" required />
+          </div>
+          <div className="form-row">
+            <div className="form-group">
+              <label>Postcode</label>
+              <input type="text" value={form.postcode} onChange={set('postcode')} placeholder="e.g. BN2 1TL" />
+            </div>
+            <div className="form-group">
+              <label>Region</label>
+              <select value={form.region} onChange={set('region')}>
+                <option value="">Select...</option>
+                {UK_REGIONS.map(r => <option key={r} value={r}>{r}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="form-row">
+            <div className="form-group">
+              <label>Property type</label>
+              <select value={form.type} onChange={set('type')}>
+                {PROPERTY_TYPES.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+              </select>
+            </div>
+            <div className="form-group">
+              <label>Units (if multi-unit)</label>
+              <input type="number" min="1" value={form.units} onChange={set('units')} placeholder="e.g. 12" />
+            </div>
+          </div>
+          <div className="form-group">
+            <label>Notes</label>
+            <textarea rows={2} value={form.notes} onChange={set('notes')} placeholder="Access details, special notes" />
+          </div>
+          <button type="submit" className="btn btn-primary">Save Property</button>
+        </form>
+      )}
+      {myProperties.length === 0 && !showAdd ? (
+        <div className="empty-state">
+          <div className="empty-icon">🏠</div>
+          <h3>No properties yet</h3>
+          <p>Add the properties you manage to attach them to survey requests.</p>
+        </div>
+      ) : (
+        <ul className="qual-list">
+          {myProperties.map(p => (
+            <li key={p.id} className="qual-item">
+              <div className="qual-info">
+                <span className="qual-file-icon">🏠</span>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: '14px' }}>{p.address}</div>
+                  <div style={{ fontSize: '12px', color: 'var(--text-light)' }}>
+                    {[p.postcode, p.region, PROPERTY_TYPES.find(t => t.id === p.type)?.label, p.units && `${p.units} units`].filter(Boolean).join(' · ')}
+                  </div>
+                </div>
+              </div>
+              <button className="btn btn-outline btn-sm" onClick={() => deleteProperty(p.id)}>Remove</button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
 function ProfileTab() {
   const { currentUser, updateCurrentUser, showToast } = useApp()
+  const [orgType, setOrgType] = useState(currentUser.orgType || 'council')
   const [councilName, setCouncilName] = useState(currentUser.councilName || '')
   const [department, setDepartment] = useState(currentUser.department || '')
   const [region, setRegion] = useState(currentUser.region || '')
+  const [address, setAddress] = useState(currentUser.address || '')
   const [phone, setPhone] = useState(currentUser.phone || '')
   const [about, setAbout] = useState(currentUser.about || '')
 
   const handleSubmit = (e) => {
     e.preventDefault()
-    updateCurrentUser({ councilName, department, region, phone, about })
+    updateCurrentUser({ orgType, councilName, department, region, address, phone, about })
     showToast('Profile updated', 'success')
   }
 
   return (
     <>
     <div className="card">
-      <h3 style={{ marginBottom: '20px' }}>Edit Council Profile</h3>
+      <h3 style={{ marginBottom: '20px' }}>Edit Organisation Profile</h3>
       <form onSubmit={handleSubmit}>
-        <div className="form-group">
-          <label>Council Name</label>
-          <input type="text" value={councilName} onChange={e => setCouncilName(e.target.value)} />
-        </div>
         <div className="form-row">
           <div className="form-group">
-            <label>Department</label>
-            <input type="text" value={department} onChange={e => setDepartment(e.target.value)} />
+            <label>Organisation type</label>
+            <select value={orgType} onChange={e => setOrgType(e.target.value)}>
+              {ORG_TYPES.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
+            </select>
           </div>
+          <div className="form-group">
+            <label>Organisation name</label>
+            <input type="text" value={councilName} onChange={e => setCouncilName(e.target.value)} />
+          </div>
+        </div>
+        <div className="form-row">
+          {orgType === 'council' && (
+            <div className="form-group">
+              <label>Department</label>
+              <input type="text" value={department} onChange={e => setDepartment(e.target.value)} />
+            </div>
+          )}
           <div className="form-group">
             <label>Region</label>
             <select value={region} onChange={e => setRegion(e.target.value)}>
@@ -464,12 +566,16 @@ function ProfileTab() {
           </div>
         </div>
         <div className="form-group">
+          <label>Address</label>
+          <input type="text" value={address} onChange={e => setAddress(e.target.value)} placeholder="Organisation address" />
+        </div>
+        <div className="form-group">
           <label>Contact Phone</label>
           <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="01234 567890" />
         </div>
         <div className="form-group">
           <label>About</label>
-          <textarea rows={4} value={about} onChange={e => setAbout(e.target.value)} placeholder="About your council and typical survey needs..." />
+          <textarea rows={4} value={about} onChange={e => setAbout(e.target.value)} placeholder="About your organisation and typical survey needs..." />
         </div>
         <button type="submit" className="btn btn-primary">Save Changes</button>
       </form>

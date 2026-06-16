@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { useApp } from '../lib/AppContext.jsx'
 import { supabase } from '../lib/supabase.js'
-import { getInitials, formatDateGB, qualLabel, feeBandPiMin, feeBandLabel, entityTypeLabel, formatGBP, isMatch, matchReasons, verificationChecklist, UK_REGIONS, QUALIFICATION_TYPES, AVAILABILITY_OPTIONS, FEE_BANDS } from '../lib/data.js'
+import { getInitials, formatDateGB, qualLabel, feeBandPiMin, feeBandLabel, entityTypeLabel, orgTypeLabel, formatGBP, isMatch, matchReasons, verificationChecklist, UK_REGIONS, QUALIFICATION_TYPES, AVAILABILITY_OPTIONS, FEE_BANDS } from '../lib/data.js'
 import LinkedInImport from '../components/LinkedInImport.jsx'
 import DocumentLink from '../components/DocumentLink.jsx'
 import ChangePassword from '../components/ChangePassword.jsx'
@@ -12,7 +12,7 @@ const TABS = [
   { id: 'match', label: '🔎 Match Surveyors' },
   { id: 'followup', label: '📣 Follow-up' },
   { id: 'surveyors', label: '📋 All Surveyors' },
-  { id: 'councils', label: '🏛 Councils' },
+  { id: 'councils', label: '🏛 Organisations' },
   { id: 'requests', label: '📑 All Requests' },
   { id: 'documents', label: '📄 Document Review' },
   { id: 'entities', label: '🏢 Entities' },
@@ -146,8 +146,8 @@ export default function AdminDashboard() {
 
           {tab === 'councils' && (
             <div className="card">
-              <div className="card-header"><span className="card-title">Councils ({allCouncils.length})</span></div>
-              {allCouncils.length === 0 ? <Empty icon="🏛" title="No councils" />
+              <div className="card-header"><span className="card-title">Organisations ({allCouncils.length})</span></div>
+              {allCouncils.length === 0 ? <Empty icon="🏛" title="No organisations" />
                 : allCouncils.map(c => <CouncilRow key={c.id} c={c} />)}
             </div>
           )}
@@ -299,7 +299,10 @@ function CouncilRow({ c }) {
           {getInitials(c.councilName || c.name)}
         </div>
         <div style={{ flex: 1 }}>
-          <h4>{c.councilName || c.name}</h4>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
+            <h4>{c.councilName || c.name}</h4>
+            <span className="badge badge-qual">{orgTypeLabel(c.orgType)}</span>
+          </div>
           <div className="request-meta" style={{ margin: '6px 0' }}>
             <span>👤 {c.name}</span>
             <span>✉️ {c.email}</span>

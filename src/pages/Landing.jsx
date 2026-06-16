@@ -8,7 +8,7 @@ export default function Landing() {
     <div className="container">
       <div className="hero">
         <h1>Connect Councils with<br />Qualified Surveyors</h1>
-        <p>The UK's platform for local councils to find verified surveyors, and for surveyors to access council work — matched by location and qualification.</p>
+        <p>The UK's platform for councils and social landlords to find verified surveyors, and for surveyors to access that work — matched by location and qualification.</p>
         <div className="hero-buttons">
           <button className="btn btn-primary btn-lg" onClick={() => startRegister('surveyor')}>
             Register as Surveyor
@@ -18,14 +18,7 @@ export default function Landing() {
             style={{ background: 'rgba(255,255,255,0.2)', color: 'white' }}
             onClick={() => startRegister('council')}
           >
-            Register as Council
-          </button>
-          <button
-            className="btn btn-lg"
-            style={{ background: 'rgba(255,255,255,0.2)', color: 'white' }}
-            onClick={() => startRegister('landlord')}
-          >
-            Register as Landlord
+            Register as Organisation
           </button>
         </div>
       </div>
@@ -33,8 +26,8 @@ export default function Landing() {
       <div className="features">
         <div className="feature-card">
           <div className="feature-icon">🏛</div>
-          <h3>For Local Councils</h3>
-          <p>Post survey requirements and receive quotes from qualified, verified surveyors in your region. Streamline your procurement process.</p>
+          <h3>For Councils & Social Landlords</h3>
+          <p>Councils, housing associations and ALMOs: post survey requirements and receive quotes from qualified, verified surveyors in your region, with Awaab's Law deadlines tracked automatically.</p>
         </div>
         <div className="feature-card">
           <div className="feature-icon">📋</div>

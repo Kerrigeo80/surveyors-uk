@@ -17,6 +17,21 @@ export const LANDLORD_TYPES = [
   { id: 'housing_association', label: 'Housing association' },
 ]
 
+// Unified customer ("organisation") types — councils and social landlords all
+// post jobs the same way. Stored on the councils row as org_type.
+export const ORG_TYPES = [
+  { id: 'council', label: 'Council / Local authority' },
+  { id: 'housing_association', label: 'Housing association' },
+  { id: 'almo', label: 'ALMO (arms-length management org)' },
+  { id: 'managing_agent', label: 'Managing agent' },
+  { id: 'property_company', label: 'Property company' },
+  { id: 'private_landlord', label: 'Private landlord' },
+]
+
+export function orgTypeLabel(id) {
+  return ORG_TYPES.find(o => o.id === id)?.label || 'Organisation'
+}
+
 // Awaab's Law hazard categories (HHSRS-aligned), tagged by the rollout phase
 // in which they become enforceable. Phase 1 live now; 2 in 2026; 3 in 2027.
 export const HAZARD_CATEGORIES = [

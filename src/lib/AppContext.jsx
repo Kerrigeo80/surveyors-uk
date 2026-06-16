@@ -50,6 +50,8 @@ function flattenProfile(profile, surveyor, council, landlord) {
       region: council.region || '',
       phone: council.phone || '',
       about: council.about || '',
+      orgType: council.org_type || 'council',
+      address: council.address || '',
     }
   }
   if (profile.role === 'landlord' && landlord) {
@@ -111,6 +113,7 @@ function buildUsersList(profiles, surveyors, councils, landlords, documentsBySur
         id: p.id, role: 'council', name: p.name, email: p.email,
         councilName: c?.council_name || '', department: c?.department || '',
         region: c?.region || '', phone: c?.phone || '', about: c?.about || '',
+        orgType: c?.org_type || 'council', address: c?.address || '',
       }
     }
     if (p.role === 'landlord') {
@@ -371,6 +374,8 @@ export function AppProvider({ children }) {
         council_name: data.councilName || '',
         department: data.department || '',
         region: data.region || '',
+        org_type: data.orgType || 'council',
+        address: data.address || '',
       })
     } else if (data.role === 'landlord') {
       Object.assign(metadata, {
@@ -476,6 +481,8 @@ export function AppProvider({ children }) {
       if (patch.region !== undefined) counPatch.region = patch.region
       if (patch.phone !== undefined) counPatch.phone = patch.phone
       if (patch.about !== undefined) counPatch.about = patch.about
+      if (patch.orgType !== undefined) counPatch.org_type = patch.orgType
+      if (patch.address !== undefined) counPatch.address = patch.address
       if (Object.keys(counPatch).length) {
         await supabase.from('councils').update(counPatch).eq('profile_id', currentUser.id)
       }
