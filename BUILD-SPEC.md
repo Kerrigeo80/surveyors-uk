@@ -67,6 +67,13 @@ Two revenue lines, **modelled in the app now; real Stripe billing wired once the
 
 ---
 
+## Recent build (2026-06-16)
+
+- **Survey report delivery** — the surveyor's deliverable now has a home. On a won job the surveyor uploads their report + photos (or uses the **Quotem** link — a dead-end stub until that integration is built); the organisation reviews and downloads it, then marks the job complete. Files sit in a private `reports` bucket, locked to the org + surveyor + admin. Flow: post → win → survey → **deliver report → org reviews → complete & pay**.
+- **Surveyor sourcing** — admin imports surveyors from a **raw LinkedIn export** (CSV) into a pool, then sends each a unique **invite link** (`/register?invite=<id>`). Registering via it **auto-merges** the saved profile into the new account. (Outreach itself is done off-platform via LinkedIn Recruiter; exports carry no emails. A platform "Send invite" email is a future add-on once emails exist — mind PECR/GDPR for cold outreach.)
+
+---
+
 ## Schema — current (Phase 1 — ✓ DONE)
 
 ```

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useApp } from '../lib/AppContext.jsx'
 import { supabase } from '../lib/supabase.js'
@@ -26,6 +26,27 @@ export default function Register() {
   const [claimingId, setClaimingId] = useState(null)
   const [checking, setChecking] = useState(false)
   const [checkedKey, setCheckedKey] = useState('')
+
+  // Invite link: /register?invite=<linkedin_profile_id> — pre-fill from the saved
+  // LinkedIn profile and auto-link it to the new account on signup.
+  useEffect(() => {
+    const inviteId = new URLSearchParams(location.search).get('invite')
+    if (!inviteId) return
+    let cancelled = false
+    ;(async () => {
+      const { data } = await supabase.rpc('get_linkedin_invite', { p_id: inviteId })
+      const prof = data?.[0]
+      if (cancelled || !prof) return
+      setRole('surveyor')
+      setName(prev => prev || prof.name || '')
+      if (prof.rics) setRics(prof.rics)
+      if (prof.region) setRegion(prof.region)
+      if (Array.isArray(prof.qualifications) && prof.qualifications.length) setQuals(prof.qualifications)
+      setMatch(prof)
+      setClaimingId(inviteId)
+    })()
+    return () => { cancelled = true }
+  }, [location.search])
 
   const checkLinkedIn = async () => {
     if (role !== 'surveyor') return

@@ -622,11 +622,20 @@ function InsuranceRow({ p, feeBand, onChanged }) {
 }
 
 function LinkedInList({ profiles }) {
+  const { showToast } = useApp()
+  const copyInvite = (id) => {
+    const url = `${window.location.origin}/register?invite=${id}`
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(url).then(() => showToast('Invite link copied', 'success'), () => window.prompt('Copy this invite link:', url))
+    } else {
+      window.prompt('Copy this invite link:', url)
+    }
+  }
   return (
     <table className="data-table">
       <thead>
         <tr>
-          <th>Name</th><th>Email</th><th>RICS</th><th>Region</th><th>Quals</th><th>Status</th>
+          <th>Name</th><th>Email</th><th>RICS</th><th>Region</th><th>Quals</th><th>Status</th><th>Invite</th>
         </tr>
       </thead>
       <tbody>
@@ -641,6 +650,11 @@ function LinkedInList({ profiles }) {
               {p.claimed_by
                 ? <span className="badge badge-verified">claimed · {p.claimer?.name || '—'}</span>
                 : <span className="badge badge-pending">unclaimed</span>}
+            </td>
+            <td>
+              {p.claimed_by
+                ? '—'
+                : <button className="btn btn-outline btn-sm" onClick={() => copyInvite(p.id)}>Copy link</button>}
             </td>
           </tr>
         ))}
