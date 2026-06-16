@@ -6,25 +6,32 @@ Format: newest entries at the top. Keep entries short. Delete anything stale.
 
 ---
 
-## ⭐ NEXT UP — Finish email activation (DNS done; Supabase config + verify left)
+## ⭐ NEXT UP — Payments & fees (design + build)
 
-Domain + DNS are sorted. **Google Workspace mailboxes are live** (kerri@/hello@/info@). **All email DNS records are entered in Cloudflare** (see `dns-records-checklist.md`). Remaining to make app email actually send:
+Surveyor + customer sides are built and **LIVE** (email working, domain pointed at the app). The remaining core build is **payments/fees**: invoicing between organisation and surveyor, and whether the platform takes a cut (pricing model + Stripe). **Not started — needs a design decision first** (what flows through the platform, % cut vs subscription, etc.).
 
-1. ✓ Domain `outsourcesurveys.uk` (Crazy Domains) + ✓ DNS moved to **Cloudflare** (free) — nameservers julio/miki.ns.cloudflare.com. Crazy Domains standard DNS couldn't do TXT; Cloudflare can.
-2. **Verify** once Cloudflare nameservers fully propagate: Resend → "I've added the records"; Google Admin → "Start authentication". (Both may sit pending until propagation completes.)
-3. **Supabase Edge Function secrets** (send-notification-email): `RESEND_API_KEY` (re_… — the actual on/off switch), `EMAIL_FROM` = `Outsource Surveys <noreply@outsourcesurveys.uk>`, `WEBHOOK_SECRET` = the Vault `email_webhook_secret` value (must match exactly).
-4. **Confirm `verify_jwt = false`** on the function (trigger calls it with only the webhook secret).
-5. **Supabase Auth → SMTP**: point at Resend (`smtp.resend.com:465`, user `resend`, pass = API key) + set Site URL. Then test both paths.
-6. ✓ Leaked Password Protection ENABLED.
-
-Optional cleanup: re-add Google verification CNAME (`nddfsctutzbg` → `gv-uvdvrxgxq2mtm6.dv.googlehosted.com`) in Cloudflare — didn't carry over from Crazy Domains; domain stays verified for now.
-
-Then the last big build is **billing/subscriptions** (blocked on pricing £ numbers + Stripe).
+Parked until closer to launch: **go-live prep** (backups/PITR, final SSL confirmation), **Companies House** auto-check for surveyor entities (needs the free CH API key).
 
 ## Also pending (not blocking)
-- **Move repo out of OneDrive** → `C:\dev\surveyors-uk` (OneDrive sync causes `.git/index.lock` issues). Commit+push first, then `git clone` to the new location, recreate `.env.local`, `npm install`. GitHub is the backup, not OneDrive.
+- **Rotate the Resend API key** — shared in chat 2026-06-16; create a fresh one in Resend + update the Supabase edge-fn `RESEND_API_KEY` secret.
+- **Supabase Auth SMTP** — optional: point at Resend (`smtp.resend.com:465`, user `resend`, pass = API key) so auth/reset emails come from outsourcesurveys.uk (currently default Supabase sender; reset links already work).
 - **LinkedIn lookup hardening** — `match_linkedin_profile` is anon-callable (needed for pre-login signup match) but returns scraped personal data; consider exact-email-only matching or rate limiting.
 - **Branding decision** — app/email say "Surveyors UK"; company/domain is "Outsource Surveys". Align before launch?
+
+---
+
+## 2026-06-16 — Cowork (Claude) — Verification gate, admin tools, direct offers, email LIVE, domain, unified customer model
+
+Big session. Repo moved off OneDrive to `C:\Users\kerri\Projects\surveyors-uk`. Email went live. Customer model unified. All committed & pushed; `npm run build` clean.
+
+- **Surveyor verification gate** (migrations `surveyor_entity_verification_gate`, `enforce_surveyor_entity_verification`, `surveyor_entity_sync_bypass`, `harden_verification_functions`). A surveyor must clear **4 gates** before they can quote / be matched / accept work — enforced in DB (RLS on `quotes` insert + `private.surveyor_work_ready(uuid)`), not just UI: (1) **trading entity** — `surveyors.entity_type` sole_trader/limited_company + `entity_status='verified'` (admin-only; trigger `enforce_surveyor_entity` blocks self-verify); (2) **PI insurance** verified, in-date, cover ≥ RICS minimum for `fee_band` (under_100k→£250k / 100k_200k→£500k / over_200k→£1m via `private.required_pi_minimum`); (3) **≥1 verified credential_document**; (4) **liability declaration** (`liability_declared_at`). Maintained `surveyors.work_ready` bool + auto `profiles.status`→active via `private.sync_surveyor_work_ready` (tx-local flag `app.sync_work_ready` lets the sync bypass the enforce trigger). New surveyor cols: entity_type, trading_name, company_number, company_name, company_status, company_verified_at, vat_number, fee_band, entity_status, liability_declared_at, work_ready.
+- **Surveyor UI:** new ✅ Verification tab (EntityForm + LiabilityCard + 4-step checklist via `verificationChecklist()` in data.js). Quote buttons gate on `currentUser.workReady` (was `status==='active'`) in RequestDetailModal + RequestCard.
+- **Admin UI:** 🏢 Entities tab (verify/reject entity + Companies House lookup link), Insurance tab shows required PI min vs cover (flags underinsured), 🔎 Match Surveyors tab (recruiter search/match to a job, email + share-job mailto), 📣 Follow-up tab (unverified surveyors + exactly what each is missing + outreach mailto). `setEntityStatus` admin action added.
+- **Direct fixed-fee offers** (migration `direct_assign_offers`, DB-tested OK). `offers` table + RLS; an org offers a job at a set fee to a work-ready surveyor; surveyor **accepts** (via SECURITY DEFINER RPC `accept_offer` → creates a 'won' quote at the fee, awards the job, notifies the org) or **declines**. Org UI: DirectOfferSection in RequestDetailModal (verified-surveyor picker, flags matches). Surveyor UI: 📨 Job Offers tab. `notify_offer` trigger notifies surveyor on new offer.
+- **Email LIVE & tested.** Resend secrets set in edge fn (`RESEND_API_KEY`, `EMAIL_FROM`, `WEBHOOK_SECRET`=vault value, `SITE_URL`). Test: inserting a notification → pg_net 200 `{"sent":true}` → email received in inbox. (Auth SMTP still default Supabase sender — optional follow-up.)
+- **Domain:** `outsourcesurveys.uk` pointed at Vercel — Cloudflare root **A → 76.76.21.21**, **www CNAME → cname.vercel-dns.com**, both **DNS-only (grey cloud)**. www is primary; apex 308-redirects. SSL issued. Supabase Auth Site URL + redirect URLs set to the new domain (fixed the localhost:3000 reset-link bug).
+- **Customer model unified** (migration `unify_customer_org_type`). Councils + landlords → one **"Organisation"** customer (still the `council` role under the hood — no enum churn). `councils.org_type` (council/housing_association/almo/managing_agent/property_company/private_landlord) + `councils.address`. `properties_insert` RLS now allows the council role. Registration = **Surveyor + Organisation** (org_type select); landlord signup retired. CouncilDashboard = unified Organisation dashboard (added Properties tab ported from landlord; ProfileTab has org_type+address; sidebar shows org type). Landing + Admin relabelled ("Organisations"). Legacy `landlord` role/route/LandlordDashboard kept for back-compat (no real landlord data).
+- Security advisors clean — remaining warnings all intentional (pg_net in public; anon `submit_hazard_report`/`org_public_name`; authenticated `claim_linkedin_profile`/`accept_offer`).
 
 ---
 

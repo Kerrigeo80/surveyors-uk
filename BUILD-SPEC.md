@@ -2,7 +2,7 @@
 
 **Canonical source of truth.** Edit this file in place as decisions are made.
 
-**Last updated:** 2026-06-13
+**Last updated:** 2026-06-16
 **Sister documents:** `HANDOFF.md` (session whiteboard) · `reference/mockup.html` (original visual prototype)
 
 ---
@@ -11,8 +11,8 @@
 
 A **Plentific-style marketplace** for the UK surveying industry. Three sides:
 
-- **Requesters** — councils, landlords (individual through housing associations), other property owners — post survey requirements and receive **quotes** from vetted surveyors.
-- **Surveyors** — vetted professionals who submit quotes on matched work, win jobs, and run them through to completion in-app.
+- **Organisations (requesters)** — one unified customer account with an *organisation type* (council, housing association, ALMO, managing agent, property company, private landlord). Post survey requirements and receive **quotes**, or send a **direct fixed-fee offer** to a verified surveyor. Awaab's Law statutory clock tracked on social-housing hazards.
+- **Surveyors** — vetted professionals who must clear a 4-step verification gate (entity + PI insurance + qualification + liability) before they can quote on matched work or accept offers, win jobs, and run them to completion in-app.
 - **Admin (Talent Network team)** — vets surveyors, reviews credentials, moderates listings, seeds the surveyor pool from imported LinkedIn profiles.
 
 **Reference product:** [Plentific](https://plentific.com) — same pattern adapted for surveys instead of repairs/compliance work. Their core loop is: requester posts work → matched contractors quote → requester awards → work runs through stages → completion + invoicing.
@@ -27,17 +27,17 @@ A **Plentific-style marketplace** for the UK surveying industry. Three sides:
 - Supabase — project ref `zxraxgjzmthgzilgkihb`, region `eu-west-2`. Auth (email+password) + Postgres + Storage (planned).
 - Client: `src/lib/supabase.js`. Env: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` (also configured in Vercel).
 - Hosting: Vercel, auto-deploy from `main` on `Kerrigeo80/surveyors-uk`.
-- Live: https://surveyors-uk.vercel.app/
+- Live: **https://www.outsourcesurveys.uk** (custom domain; also https://surveyors-uk.vercel.app/). Local repo: `C:\Users\kerri\Projects\surveyors-uk` (moved off OneDrive 2026-06-16).
 
 ---
 
 ## Operating principles
 
-1. **Verified credentials only.** RICS membership + supporting docs reviewed before a surveyor can quote on work.
+1. **Verified, insured, registered surveyors only.** A surveyor must clear a 4-step gate — registered trading entity, in-date PI insurance at the RICS minimum for their fee band, ≥1 verified qualification, and a signed liability declaration — before they can quote or accept work. Enforced in the database, not just the UI.
 2. **Trust the data.** Sort by data (verified first, rating, recency) — never algorithmic "top picks".
 3. **Privacy by design.** Contact details locked behind engagement; consent flows from day one.
-4. **Multi-requester from day one.** Councils, landlords, housing associations — same posting flow, role-specific fields.
-5. **Quote, don't just intro.** Surveyors submit a real quote (price, timeline, scope notes); requester picks one. End-to-end, not lead-gen.
+4. **One Organisation customer.** Councils, housing associations, ALMOs, agents, landlords — same account type with an `org_type`, same posting flow.
+5. **Quote or direct-offer.** Surveyors submit a real quote (price, timeline, scope) and the org awards one; or the org sends a direct fixed-fee offer the surveyor accepts. End-to-end, not lead-gen.
 
 ---
 
@@ -45,12 +45,12 @@ A **Plentific-style marketplace** for the UK surveying industry. Three sides:
 
 | Role | Status default | Capabilities |
 |---|---|---|
-| `surveyor` | `pending` until verified | Browse open requests; submit quotes (planned); upload credentials |
-| `council` | `active` | Post requests; review quotes; award work |
-| `landlord` | `active` (planned) | Same as council but with optional property portfolio |
-| `admin` | `active` | Verify surveyors, review documents, import LinkedIn pool, moderate everything |
+| `surveyor` | `pending` until **work-ready** | Browse open requests; submit quotes; accept direct offers — all gated on the 4-step verification (entity + PI insurance + qualification + liability). Uploads credentials/insurance/entity details. |
+| `council` (= **Organisation**) | `active` | Post requests, review quotes, award work, send direct fixed-fee offers, manage properties. Carries an `org_type` (council / housing association / ALMO / managing agent / property company / private landlord). |
+| `landlord` | legacy | Superseded by the unified Organisation (council role). Kept for back-compat; not offered at signup. |
+| `admin` | `active` | Verify surveyors (entity, insurance, docs), match/shortlist surveyors to jobs, follow up unverified, import LinkedIn pool, moderate everything. |
 
-Future: **housing association** as a multi-user variant of `landlord` — a single account with several team members. Defer until single-user landlord works.
+**Done (2026-06-16):** councils + landlords unified into one **Organisation** account with an `org_type` (covers housing associations, ALMOs, etc.). Multi-user org accounts (several team members under one org) remain a future enhancement.
 
 ---
 
