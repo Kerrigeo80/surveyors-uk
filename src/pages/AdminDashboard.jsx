@@ -19,6 +19,7 @@ const TABS = [
   { id: 'insurance', label: '🛡 Insurance' },
   { id: 'linkedin', label: '📥 LinkedIn Pool' },
   { id: 'feedback', label: '💬 Beta Feedback' },
+  { id: 'billing', label: '💷 Billing' },
   { id: 'account', label: '🔑 Account' },
 ]
 
@@ -232,6 +233,7 @@ export default function AdminDashboard() {
             </div>
           )}
 
+          {tab === 'billing' && <BillingAdminTab />}
           {tab === 'account' && <ChangePassword />}
         </div>
       </div>
@@ -668,6 +670,62 @@ function FeedbackRow({ f }) {
         </div>
       </div>
     </div>
+  )
+}
+
+function BillingAdminTab() {
+  const { settings, jobCharges, updatePlatformSettings } = useApp()
+  const [rate, setRate] = useState(settings ? String(Math.round((settings.commission_rate || 0) * 1000) / 10) : '10')
+  const [survPrice, setSurvPrice] = useState(settings?.surveyor_plan_price ?? '')
+  const [orgPrice, setOrgPrice] = useState(settings?.org_plan_price ?? '')
+  const [saving, setSaving] = useState(false)
+
+  const totalCommission = jobCharges.reduce((s, c) => s + Number(c.commissionAmount || 0), 0)
+  const totalGmv = jobCharges.reduce((s, c) => s + Number(c.surveyorFee || 0), 0)
+
+  const save = async (e) => {
+    e.preventDefault()
+    setSaving(true)
+    await updatePlatformSettings({
+      commissionRate: rate === '' ? undefined : Number(rate) / 100,
+      surveyorPlanPrice: survPrice === '' ? '' : Number(survPrice),
+      orgPlanPrice: orgPrice === '' ? '' : Number(orgPrice),
+    })
+    setSaving(false)
+  }
+
+  return (
+    <>
+      <div className="card" style={{ marginBottom: '20px' }}>
+        <div className="card-header"><span className="card-title">Revenue</span></div>
+        <div className="stats-row">
+          <div className="stat-card"><div className="stat-value">{formatGBP(totalCommission)}</div><div className="stat-label">Commission earned</div></div>
+          <div className="stat-card"><div className="stat-value">{jobCharges.length}</div><div className="stat-label">Completed jobs</div></div>
+          <div className="stat-card"><div className="stat-value">{formatGBP(totalGmv)}</div><div className="stat-label">Surveyor fees (GMV)</div></div>
+        </div>
+      </div>
+      <div className="card">
+        <div className="card-header"><span className="card-title">Platform settings</span></div>
+        <form onSubmit={save}>
+          <div className="form-group">
+            <label>Commission rate (%)</label>
+            <input type="number" step="0.1" value={rate} onChange={e => setRate(e.target.value)} placeholder="10" />
+            <p style={{ fontSize: '12px', color: 'var(--text-light)', marginTop: '4px' }}>Added on top of the surveyor's fee on each completed job.</p>
+          </div>
+          <div className="form-row">
+            <div className="form-group">
+              <label>Surveyor plan (£/month)</label>
+              <input type="number" value={survPrice} onChange={e => setSurvPrice(e.target.value)} placeholder="Not set" />
+            </div>
+            <div className="form-group">
+              <label>Organisation plan (£/month)</label>
+              <input type="number" value={orgPrice} onChange={e => setOrgPrice(e.target.value)} placeholder="Not set" />
+            </div>
+          </div>
+          <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Saving…' : 'Save settings'}</button>
+        </form>
+      </div>
+    </>
   )
 }
 

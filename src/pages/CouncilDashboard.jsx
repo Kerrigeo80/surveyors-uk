@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Navigate, useNavigate, useLocation } from 'react-router-dom'
 import { useApp } from '../lib/AppContext.jsx'
-import { UK_REGIONS, QUALIFICATION_TYPES, PROPERTY_TYPES, ORG_TYPES, HAZARD_CATEGORIES, HAZARD_SEVERITIES, getInitials, formatDateGB, qualLabel, hazardCategoryLabel, propertyTypeLabel, orgTypeLabel, toDatetimeLocal, isInsured, totalUnreadMessages } from '../lib/data.js'
+import { UK_REGIONS, QUALIFICATION_TYPES, PROPERTY_TYPES, ORG_TYPES, HAZARD_CATEGORIES, HAZARD_SEVERITIES, getInitials, formatDateGB, qualLabel, hazardCategoryLabel, propertyTypeLabel, orgTypeLabel, toDatetimeLocal, isInsured, totalUnreadMessages, formatGBP } from '../lib/data.js'
 import RequestDetailModal from '../components/RequestDetailModal.jsx'
 import ResidentReports from '../components/ResidentReports.jsx'
 import Messages from '../components/Messages.jsx'
@@ -31,6 +31,7 @@ const TABS = [
   { id: 'create-request', label: '➕ New Request' },
   { id: 'properties', label: '🏠 My Properties' },
   { id: 'surveyors', label: '🔍 Browse Surveyors' },
+  { id: 'billing', label: '💷 Billing' },
   { id: 'messages', label: '💬 Messages' },
   { id: 'profile', label: '⚙️ Edit Profile' },
 ]
@@ -93,6 +94,7 @@ export default function CouncilDashboard() {
           {tab === 'my-requests' && <MyRequestsTab myReqs={myReqs} onView={setDetailReq} onCreate={() => goCreate()} />}
           {tab === 'create-request' && <CreateRequestTab prefill={prefill} onCreated={() => { setPrefill(null); setTab('my-requests') }} />}
           {tab === 'properties' && <PropertiesTab />}
+          {tab === 'billing' && <BillingTab />}
           {tab === 'surveyors' && <SurveyorsTab />}
           {tab === 'messages' && <Messages />}
           {tab === 'profile' && <ProfileTab />}
@@ -426,6 +428,60 @@ function SurveyorCard({ s }) {
         </div>
       </div>
     </div>
+  )
+}
+
+function BillingTab() {
+  const { currentUser, jobCharges, requests, settings } = useApp()
+  const reqById = new Map(requests.map(r => [r.id, r]))
+  const mine = jobCharges.filter(c => c.orgId === currentUser.id)
+  const totalOwed = mine.filter(c => c.status !== 'paid').reduce((s, c) => s + Number(c.orgTotal || 0), 0)
+  const planPrice = settings?.org_plan_price
+  const ratePct = Math.round((settings?.commission_rate ?? 0.10) * 100)
+
+  return (
+    <>
+      <div className="card" style={{ marginBottom: '20px' }}>
+        <div className="card-header">
+          <span className="card-title">Your plan</span>
+          <span className="badge badge-pending">Founding member</span>
+        </div>
+        <p style={{ fontSize: '13px', color: 'var(--text-light)' }}>
+          Free during launch. An organisation subscription{planPrice != null ? ` of ${formatGBP(planPrice)}/month` : ' (price to be confirmed)'} will
+          apply when billing goes live, plus a <strong>{ratePct}%</strong> platform fee added on top of each completed job's surveyor fee.
+        </p>
+      </div>
+      <div className="card">
+        <div className="card-header">
+          <span className="card-title">Invoices ({mine.length})</span>
+          {totalOwed > 0 && <span style={{ fontSize: '13px', fontWeight: 600 }}>Outstanding: {formatGBP(totalOwed)}</span>}
+        </div>
+        {mine.length === 0 ? (
+          <div className="empty-state">
+            <div className="empty-icon">💷</div>
+            <h3>No invoices yet</h3>
+            <p>When a job is marked complete, the surveyor fee and platform commission appear here.</p>
+          </div>
+        ) : (
+          <table className="data-table">
+            <thead>
+              <tr><th>Job</th><th>Surveyor fee</th><th>Platform fee</th><th>Total</th><th>Status</th></tr>
+            </thead>
+            <tbody>
+              {mine.map(c => (
+                <tr key={c.id}>
+                  <td>{reqById.get(c.requestId)?.title || '—'}</td>
+                  <td>{formatGBP(c.surveyorFee)}</td>
+                  <td>{formatGBP(c.commissionAmount)}</td>
+                  <td><strong>{formatGBP(c.orgTotal)}</strong></td>
+                  <td><span className={`badge badge-${c.status === 'paid' ? 'verified' : 'pending'}`}>{c.status}</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </>
   )
 }
 

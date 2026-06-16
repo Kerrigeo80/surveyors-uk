@@ -181,6 +181,9 @@ export function AppProvider({ children }) {
   const [notifications, setNotifications] = useState([])
   const [conversations, setConversations] = useState([])
   const [offers, setOffers] = useState([])
+  const [settings, setSettings] = useState(null)
+  const [mySubscription, setMySubscription] = useState(null)
+  const [jobCharges, setJobCharges] = useState([])
   const [toasts, setToasts] = useState([])
   const [ready, setReady] = useState(false)
   const mountedRef = useRef(true)
@@ -196,6 +199,7 @@ export function AppProvider({ children }) {
     if (!userId) {
       setCurrentUser(null); setUsers([]); setRequests([]); setReports([])
       setNotifications([]); setConversations([]); setOffers([])
+      setSettings(null); setMySubscription(null); setJobCharges([])
       return
     }
     const [
@@ -220,7 +224,7 @@ export function AppProvider({ children }) {
     const [
       { data: propertiesData }, { data: notificationsData }, { data: reviews },
       { data: myInsurance }, { data: convs }, { data: msgs }, { data: reportsData },
-      { data: offersData },
+      { data: offersData }, { data: settingsData }, { data: mySubData }, { data: chargesData },
     ] = await Promise.all([
       supabase.from('properties').select('*').order('created_at', { ascending: false }),
       supabase.from('notifications').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(50),
@@ -232,6 +236,10 @@ export function AppProvider({ children }) {
       supabase.from('hazard_reports').select('*').order('created_at', { ascending: false }),
       // RLS scopes offers to the surveyor they're for / the council that sent them.
       supabase.from('offers').select('*').order('created_at', { ascending: false }),
+      supabase.from('platform_settings').select('*').eq('id', 1).maybeSingle(),
+      supabase.from('subscriptions').select('*').eq('profile_id', userId).maybeSingle(),
+      // RLS scopes charges to the org / surveyor on them (admin sees all).
+      supabase.from('job_charges').select('*').order('created_at', { ascending: false }),
     ])
 
     if (!mountedRef.current) return
@@ -293,6 +301,14 @@ export function AppProvider({ children }) {
       id: o.id, requestId: o.request_id, surveyorId: o.surveyor_id,
       fee: o.fee, message: o.message, status: o.status,
       createdAt: o.created_at, respondedAt: o.responded_at,
+    })))
+    setSettings(settingsData || null)
+    setMySubscription(mySubData || null)
+    setJobCharges((chargesData || []).map(c => ({
+      id: c.id, requestId: c.request_id, orgId: c.org_id, surveyorId: c.surveyor_id,
+      surveyorFee: c.surveyor_fee, commissionRate: c.commission_rate,
+      commissionAmount: c.commission_amount, orgTotal: c.org_total,
+      status: c.status, createdAt: c.created_at,
     })))
   }, [])
 
@@ -810,10 +826,23 @@ export function AppProvider({ children }) {
     await loadAll(currentUser?.id)
   }, [currentUser, loadAll, showToast])
 
+  // Admin edits the platform commission rate + subscription plan prices.
+  const updatePlatformSettings = useCallback(async ({ commissionRate, surveyorPlanPrice, orgPlanPrice }) => {
+    const patch = { updated_at: new Date().toISOString() }
+    if (commissionRate !== undefined) patch.commission_rate = commissionRate
+    if (surveyorPlanPrice !== undefined) patch.surveyor_plan_price = surveyorPlanPrice === '' ? null : surveyorPlanPrice
+    if (orgPlanPrice !== undefined) patch.org_plan_price = orgPlanPrice === '' ? null : orgPlanPrice
+    const { error } = await supabase.from('platform_settings').update(patch).eq('id', 1)
+    if (error) { showToast(error.message, 'error'); return false }
+    showToast('Settings saved', 'success')
+    await loadAll(currentUser?.id)
+    return true
+  }, [currentUser, loadAll, showToast])
+
   const refresh = useCallback(() => loadAll(currentUser?.id), [currentUser, loadAll])
 
   const value = useMemo(() => ({
-    session, currentUser, users, requests, reports, properties, notifications, conversations, offers, toasts, ready,
+    session, currentUser, users, requests, reports, properties, notifications, conversations, offers, settings, mySubscription, jobCharges, toasts, ready,
     register, login, demoLogin, logout, changePassword, requestPasswordReset,
     updateCurrentUser, addDocument, createRequest, closeRequest, dismissReport,
     createProperty, deleteProperty,
@@ -822,11 +851,11 @@ export function AppProvider({ children }) {
     setAwaabsMilestone,
     submitInsurance, setInsuranceStatus, setEntityStatus,
     sendMessage, markConversationRead,
-    setSurveyorStatus, setDocumentStatus,
+    setSurveyorStatus, setDocumentStatus, updatePlatformSettings,
     markNotificationRead, markAllNotificationsRead, refreshNotifications,
     refresh,
     showToast,
-  }), [session, currentUser, users, requests, reports, properties, notifications, conversations, offers, toasts, ready,
+  }), [session, currentUser, users, requests, reports, properties, notifications, conversations, offers, settings, mySubscription, jobCharges, toasts, ready,
        register, login, demoLogin, logout, changePassword, requestPasswordReset,
        updateCurrentUser, addDocument, createRequest, closeRequest, dismissReport,
        createProperty, deleteProperty,
@@ -835,7 +864,7 @@ export function AppProvider({ children }) {
        setAwaabsMilestone,
        submitInsurance, setInsuranceStatus, setEntityStatus,
        sendMessage, markConversationRead,
-       setSurveyorStatus, setDocumentStatus,
+       setSurveyorStatus, setDocumentStatus, updatePlatformSettings,
        markNotificationRead, markAllNotificationsRead, refreshNotifications,
        refresh, showToast])
 

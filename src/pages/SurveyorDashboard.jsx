@@ -17,6 +17,7 @@ const TABS = [
   { id: 'requests', label: '📋 Available Requests' },
   { id: 'my-interests', label: '⭐ My Quotes' },
   { id: 'my-offers', label: '📨 Job Offers' },
+  { id: 'billing', label: '💷 Earnings' },
   { id: 'messages', label: '💬 Messages' },
   { id: 'profile', label: '⚙️ Edit Profile' },
 ]
@@ -112,6 +113,7 @@ export default function SurveyorDashboard() {
           {tab === 'requests' && <RequestsTab onView={setDetailReq} />}
           {tab === 'my-interests' && <MyInterestsTab myInterests={myInterests} onView={setDetailReq} />}
           {tab === 'my-offers' && <OffersTab user={currentUser} />}
+          {tab === 'billing' && <EarningsTab user={currentUser} />}
           {tab === 'messages' && <Messages />}
           {tab === 'profile' && <ProfileTab />}
         </div>
@@ -526,6 +528,57 @@ function RequestsTab({ onView }) {
         filtered.map(r => <RequestCard key={r.id} request={r} onView={onView} />)
       )}
     </div>
+  )
+}
+
+function EarningsTab({ user }) {
+  const { jobCharges, requests, settings } = useApp()
+  const reqById = new Map(requests.map(r => [r.id, r]))
+  const mine = jobCharges.filter(c => c.surveyorId === user.id)
+  const totalEarned = mine.reduce((s, c) => s + Number(c.surveyorFee || 0), 0)
+  const planPrice = settings?.surveyor_plan_price
+
+  return (
+    <>
+      <div className="card" style={{ marginBottom: '20px' }}>
+        <div className="card-header">
+          <span className="card-title">Your plan</span>
+          <span className="badge badge-pending">Founding member</span>
+        </div>
+        <p style={{ fontSize: '13px', color: 'var(--text-light)' }}>
+          Free during launch. A surveyor subscription{planPrice != null ? ` of ${formatGBP(planPrice)}/month` : ' (price to be confirmed)'} will
+          apply when billing goes live. You always receive your <strong>full agreed fee</strong> — the platform fee is added on top and paid by the organisation.
+        </p>
+      </div>
+      <div className="card">
+        <div className="card-header">
+          <span className="card-title">Earnings ({mine.length})</span>
+          {totalEarned > 0 && <span style={{ fontSize: '13px', fontWeight: 600 }}>Total: {formatGBP(totalEarned)}</span>}
+        </div>
+        {mine.length === 0 ? (
+          <div className="empty-state">
+            <div className="empty-icon">💷</div>
+            <h3>No earnings yet</h3>
+            <p>Your fee from each completed job appears here.</p>
+          </div>
+        ) : (
+          <table className="data-table">
+            <thead>
+              <tr><th>Job</th><th>Your fee</th><th>Status</th></tr>
+            </thead>
+            <tbody>
+              {mine.map(c => (
+                <tr key={c.id}>
+                  <td>{reqById.get(c.requestId)?.title || '—'}</td>
+                  <td><strong>{formatGBP(c.surveyorFee)}</strong></td>
+                  <td><span className={`badge badge-${c.status === 'paid' ? 'verified' : 'pending'}`}>{c.status}</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </>
   )
 }
 

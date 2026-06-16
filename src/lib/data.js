@@ -84,7 +84,16 @@ export function entityTypeLabel(id) {
 }
 export function formatGBP(n) {
   if (n == null || n === '') return '—'
-  return '£' + Number(n).toLocaleString('en-GB')
+  return '£' + Number(n).toLocaleString('en-GB', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
+}
+
+// Commission is added ON TOP of the surveyor's fee: the surveyor keeps `fee`,
+// the platform takes `commission`, and the organisation pays `total`.
+export function commissionBreakdown(fee, rate) {
+  const f = Number(fee || 0)
+  const r = Number(rate ?? 0.10)
+  const commission = Math.round(f * r * 100) / 100
+  return { fee: f, rate: r, commission, total: Math.round((f + commission) * 100) / 100 }
 }
 
 // The four gates a surveyor must clear before they can take work.

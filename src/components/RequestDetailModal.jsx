@@ -1,12 +1,12 @@
 import { useState } from 'react'
 import { useApp } from '../lib/AppContext.jsx'
-import { formatDateGB, qualLabel, getInitials, propertyTypeLabel, isInsured, awaabsClock, dueLabel, severityLabel, hazardCategoryLabel, COMPLIANCE_COLOR, isMatch, formatGBP } from '../lib/data.js'
+import { formatDateGB, qualLabel, getInitials, propertyTypeLabel, isInsured, awaabsClock, dueLabel, severityLabel, hazardCategoryLabel, COMPLIANCE_COLOR, isMatch, formatGBP, commissionBreakdown } from '../lib/data.js'
 import SubmitQuoteModal from './SubmitQuoteModal.jsx'
 import ConversationThread from './ConversationThread.jsx'
 import { RatingDisplay, RatingInput } from './RatingStars.jsx'
 
 export default function RequestDetailModal({ request: r, onClose }) {
-  const { users, currentUser, conversations, sendMessage, awardQuote, withdrawQuote, updateRequestStatus, setAwaabsMilestone } = useApp()
+  const { users, currentUser, conversations, jobCharges, settings, sendMessage, awardQuote, withdrawQuote, updateRequestStatus, setAwaabsMilestone } = useApp()
   const [showSubmit, setShowSubmit] = useState(false)
   const [showThread, setShowThread] = useState(false)     // surveyor ↔ requester
   const [msgSurveyorId, setMsgSurveyorId] = useState(null) // requester → which surveyor
@@ -189,6 +189,31 @@ export default function RequestDetailModal({ request: r, onClose }) {
             Mark Completed
           </button>
         )}
+
+        {/* Payment breakdown once the job is completed */}
+        {r.status === 'completed' && (isRequester || isSurveyor || isAdmin) && (() => {
+          const charge = jobCharges.find(c => c.requestId === r.id)
+          const wonQuote = r.quotes.find(q => q.status === 'won')
+          if (!charge && !wonQuote) return null
+          const b = charge
+            ? { fee: Number(charge.surveyorFee || 0), commission: Number(charge.commissionAmount || 0), total: Number(charge.orgTotal || 0) }
+            : commissionBreakdown(wonQuote.price, settings?.commission_rate)
+          return (
+            <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid var(--border)' }}>
+              <strong>Payment</strong>
+              <div className="request-meta" style={{ margin: '8px 0' }}>
+                <span>Surveyor fee: {formatGBP(b.fee)}</span>
+                {!isSurveyor && <span>Platform fee: {formatGBP(b.commission)}</span>}
+                {!isSurveyor && <span><strong>Total payable: {formatGBP(b.total)}</strong></span>}
+              </div>
+              <p style={{ fontSize: '12px', color: 'var(--text-light)' }}>
+                {isSurveyor
+                  ? 'You receive your full fee — the platform fee is added on top and paid by the organisation.'
+                  : 'Total includes the platform fee added on top of the surveyor’s fee.'}
+              </p>
+            </div>
+          )
+        })()}
 
         {/* Review: requester rates the winning surveyor once the job is completed */}
         {r.status === 'completed' && (() => {
